@@ -26,49 +26,47 @@ const BazaarProducts = () => {
       setProducts([])
       return
     }
+
     setLoading(true)
-    const regs = (bazaarData.registrations || []).filter(r => r?.announcementId === selectedAnnouncement.value && r?.status === 'approved')
+    const regs = (bazaarData.registrations || [])
+      .filter(r => r?.announcementId === selectedAnnouncement.value && r?.status === 'approved')
+
     let allProducts = []
+
     regs.forEach(reg => {
-      if ((participationFilter === 'all' || participationFilter === 'online') && reg.participateOnline) {
-        const arr = reg.selectedProductsOnline?.length ? reg.selectedProductsOnline : reg.selectedProducts
-        if (arr && arr.length) {
-          arr.forEach(prod => {
-            allProducts.push({
-              ...prod,
-              supplierName: reg.supplierName,
-              participation: 'online',
-              jenisProduk: prod.data?.jenisProduk || prod.jenisProduk || '',
-              ukuran: prod.data?.ukuran || prod.ukuran || '',
-              satuan: prod.data?.satuan || prod.satuan || '',
-              hpp: prod.data?.hpp || prod.hpp || '',
-              hjk: prod.data?.hjk || prod.hjk || '',
-              keterangan: prod.data?.keterangan || prod.keterangan || '',
-              imageUrl: prod.data?.imageUrl || prod.imageUrl || ''
-            })
+      (reg.registrationProducts || []).forEach(prod => {
+        const isOnline = prod.channel === 'online' || prod.channel === 'both'
+        const isOffline = prod.channel === 'offline' || prod.channel === 'both'
+
+        let participation = []
+
+        if (participationFilter === 'all') {
+          if (isOnline && reg.participateOnline) participation.push('online')
+          if (isOffline && reg.participateOffline) participation.push('offline')
+        } else if (participationFilter === 'online') {
+          if (isOnline && reg.participateOnline) participation.push('online')
+        } else if (participationFilter === 'offline') {
+          if (isOffline && reg.participateOffline) participation.push('offline')
+        }
+
+        if (participation.length > 0) {
+          allProducts.push({
+            ...prod,
+            supplierName: reg.supplierName,
+            participation,
+            offline_stock: prod.offline_stock || 0,
+            jenisProduk: prod.jenisProduk || '',
+            ukuran: prod.ukuran || '',
+            satuan: prod.satuan || '',
+            hpp: prod.hpp || '',
+            hjk: prod.hjk || '',
+            keterangan: prod.keterangan || '',
+            imageUrl: prod.imageUrl || ''
           })
         }
-      }
-      if ((participationFilter === 'all' || participationFilter === 'offline') && reg.participateOffline) {
-        const arr = reg.selectedProductsOffline?.length ? reg.selectedProductsOffline : reg.selectedProducts
-        if (arr && arr.length) {
-          arr.forEach(prod => {
-            allProducts.push({
-              ...prod,
-              supplierName: reg.supplierName,
-              participation: 'offline',
-              jenisProduk: prod.data?.jenisProduk || prod.jenisProduk || '',
-              ukuran: prod.data?.ukuran || prod.ukuran || '',
-              satuan: prod.data?.satuan || prod.satuan || '',
-              hpp: prod.data?.hpp || prod.hpp || '',
-              hjk: prod.data?.hjk || prod.hjk || '',
-              keterangan: prod.data?.keterangan || prod.keterangan || '',
-              imageUrl: prod.data?.imageUrl || prod.imageUrl || ''
-            })
-          })
-        }
-      }
+      })
     })
+
     setProducts(allProducts)
     setLoading(false)
   }, [selectedAnnouncement, participationFilter, bazaarData])
@@ -90,10 +88,17 @@ const BazaarProducts = () => {
     return true
   })
 
-  const getParticipationBadge = (type) => {
-    if (type === 'online') return <Badge color="primary" className="me-1">Online</Badge>
-    if (type === 'offline') return <Badge color="info">Offline</Badge>
-    return null
+  const getParticipationBadge = (types = []) => {
+    return (
+      <div className="d-flex flex-column gap-1">
+        {types.includes('online') && (
+          <Badge color="primary">Online</Badge>
+        )}
+        {types.includes('offline') && (
+          <Badge color="info">Offline</Badge>
+        )}
+      </div>
+    )
   }
 
   const columns = [
@@ -138,6 +143,15 @@ const BazaarProducts = () => {
       },
       sortable: true,
       width: '120px',
+      wrap: true
+    },
+    {
+      name: 'Offline Stock',
+      selector: row => {
+        if (!row.participation?.includes('offline')) return '-'
+        return row.offline_stock ?? 0
+      },
+      sortable: true,
       wrap: true
     },
     {

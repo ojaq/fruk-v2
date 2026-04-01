@@ -69,31 +69,54 @@ const wrapLabelWords = (text, maxChars = 20) => {
 }
 
 const BazaarCharts = () => {
-  const { weekData, productData } = useAuth()
+  const { productData, orders, weeks } = useAuth()
 
-  const weeks = useMemo(() => Object.keys(weekData || {}).sort((a, b) => {
-    const an = Number(a.replace(/^W/, ''))
-    const bn = Number(b.replace(/^W/, ''))
-    return an - bn
-  }), [weekData])
+  const weekCodes = useMemo(() => (weeks || [])
+    .map(w => w.week_code)
+    .filter(Boolean)
+    .sort((a, b) => Number(a.replace(/^W/, '')) - Number(b.replace(/^W/, '')))
+    , [weeks])
 
-  const optionsWeek = [{ label: 'Semua Minggu', value: 'ALL' }, ...weeks.map(w => ({ label: w, value: w }))]
+  const optionsWeek = [{ label: 'Semua Minggu', value: 'ALL' }, ...weekCodes.map(w => ({ label: w, value: w }))]
   const [selectedWeek, setSelectedWeek] = useState(optionsWeek[0])
   const [topN, setTopN] = useState(10)
   const [viewMode, setViewMode] = useState('charts')
   const [chartType, setChartType] = useState('bar')
   const [activeTab, setActiveTab] = useState('items')
 
+  const weekById = useMemo(() => {
+    const map = {}
+      ; (weeks || []).forEach(w => {
+        if (w?.id && w.week_code) map[w.id] = w.week_code
+      })
+    return map
+  }, [weeks])
+
   const allRows = useMemo(() => {
-    if (!weekData) return []
-    if (!selectedWeek || selectedWeek.value === 'ALL') return Object.values(weekData).flatMap(x => x || [])
-    return weekData[selectedWeek.value] || []
-  }, [weekData, selectedWeek])
+    if (!orders) return []
+    return (orders || []).map(row => ({
+      ...row,
+      week: weekById[row.week_id] || '',
+      produkLabel: row.produkLabel || (row.registration_products ? `${row.registration_products.nama_produk || ''} ${row.registration_products.ukuran || ''} ${row.registration_products.satuan || ''}`.trim() : ''),
+      jumlah: Number(row.jumlah || 0),
+      bayar: Number(row.bayar || 0)
+    })).filter(row => {
+      if (!selectedWeek || selectedWeek.value === 'ALL') return true
+      return (row.week || '').toLowerCase() === (selectedWeek.value || '').toLowerCase()
+    })
+  }, [orders, selectedWeek, weekById])
 
   const normalized = useMemo(() => allRows.map(r => {
     const jumlah = Number(r?.jumlah) || 0
     const bayar = parseMoney(r?.bayar) || 0
-    return { ...r, jumlah, bayar }
+    return {
+      ...r,
+      jumlah,
+      bayar,
+      status: r.status || '',
+      method: r.method || '',
+      channel: r.channel || ''
+    }
   }), [allRows])
 
   const productLookup = useMemo(() => {

@@ -4,10 +4,9 @@ import Swal from 'sweetalert2'
 import DataTable from 'react-data-table-component'
 import { Edit, Trash2, Eye } from 'react-feather'
 import { useAuth } from '../context/AuthContext'
-import { logBazaarAction } from '../context/AuthContext'
+import { } from '../context/AuthContext'
 import Select from 'react-select'
 import moment from 'moment'
-import 'moment/locale/id'
 import { supabase } from '../supabaseClient'
 moment.locale('id')
 
@@ -47,11 +46,11 @@ function formatDateTimeID(dateStr) {
   return `${d.getDate().toString().padStart(2, '0')} ${MONTHS_ID[d.getMonth()]} ${d.getFullYear()} ${jam}:${menit}`
 }
 function getSupplierName(user) {
-  return user?.profile?.namaSupplier || user?.name || ''
+  return user?.namaSupplier || user?.name || ''
 }
 
 const BazaarRegistration = () => {
-  const { user, bazaarData, saveBazaarData, productData } = useAuth()
+  const { user, users, bazaarData, saveBazaarData, productData } = useAuth()
   const [registrations, setRegistrations] = useState([])
   const [announcements, setAnnouncements] = useState([])
   const [userProducts, setUserProducts] = useState([])
@@ -67,7 +66,7 @@ const BazaarRegistration = () => {
 
   const [form, setForm] = useState({
     announcementId: '',
-    supplierName: user?.profile.namaSupplier || '',
+    supplierName: user.namaSupplier || '',
     participateOnline: false,
     participateOffline: false,
     selectedProducts: [],
@@ -77,6 +76,7 @@ const BazaarRegistration = () => {
     status: 'pending'
   })
 
+  const [offlineStocks, setOfflineStocks] = useState({})
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null)
 
   useEffect(() => {
@@ -89,8 +89,8 @@ const BazaarRegistration = () => {
   useEffect(() => {
     if (productData[user?.name]) {
       const products = productData[user.name].filter(p => p.aktif).map(p => ({
-        label: `${p.namaProduk} ${p.ukuran} ${p.satuan}`.trim(),
-        value: `${p.namaProduk} ${p.ukuran} ${p.satuan}`.trim(),
+        label: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+        value: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
         data: p
       }))
       setUserProducts(products)
@@ -104,7 +104,9 @@ const BazaarRegistration = () => {
     const deadline = new Date(a.registrationDeadline)
     return now <= deadline
   })
-  const userRegistrations = registrations.filter(r => r?.supplierName === supplierKey || r?.supplierName === user?.name || r?.supplierName === user?.profile?.namaSupplier)
+  const userRegistrations = registrations.filter(r => r?.supplierName === supplierKey || r?.supplierName === user?.name || r?.supplierName === user.namaSupplier)
+
+  const availableAnnouncements = activeAnnouncements.filter(a => !userRegistrations.some(r => r.announcementId === a.id && r.status !== 'rejected'))
 
   const lastRegistration = userRegistrations.length > 0
     ? userRegistrations.reduce((a, b) => new Date(a.createdAt) > new Date(b.createdAt) ? a : b)
@@ -202,7 +204,6 @@ const BazaarRegistration = () => {
       const maxProductsOnline = (announcement.maxProductsPerSupplier || 3) * 2
       let baseProductSetOnline = new Set()
       let baseProductSetOffline = new Set()
-      // Validate selected products against limits
       if (separateProducts) {
         if (participateOnline) {
           const baseOnline = new Set((selectedProductsOnline || []).map(p => getDynamicBaseProduct(p.label, (selectedProductsOnline || []).map(x => x.label))))
@@ -273,21 +274,24 @@ const BazaarRegistration = () => {
       let updated = [...registrations]
 
       if (!editId) {
-        const { data: freshData, error: fetchErr } = await supabase
-          .from('bazaar_data')
+        const { data: latestRegs, error: regsErr } = await supabase
+          .from('registrations')
           .select('*')
-          .single()
+          .eq('announcement_id', announcementId)
+          .eq('is_deleted', false)
 
-        if (fetchErr) throw fetchErr
-        const latest = freshData?.data || freshData
+        if (regsErr) throw regsErr
 
-        const latestRegs = latest.registrations || []
-        const activeRegs = latestRegs.filter(
-          r => r?.announcementId === announcementId && ['pending', 'approved'].includes(r?.status)
-        )
+        const activeRegs = (latestRegs || []).filter(r => ['pending', 'approved'].includes(r.status))
 
-        const onlineSuppliers = new Set(activeRegs.filter(r => r?.participateOnline).map(r => r?.supplierName))
-        const offlineSuppliers = new Set(activeRegs.filter(r => r?.participateOffline).map(r => r?.supplierName))
+        const onlineSuppliers = new Set(activeRegs.filter(r => r.participate_online).map(r => {
+          const u = users.find(x => x.id === r.supplier_id)
+          return u ? u.name : r.supplier_id
+        }))
+        const offlineSuppliers = new Set(activeRegs.filter(r => r.participate_offline).map(r => {
+          const u = users.find(x => x.id === r.supplier_id)
+          return u ? u.name : r.supplier_id
+        }))
 
         const onlineFull = onlineSuppliers.size >= maxSuppliersOnline
         const offlineFull = offlineSuppliers.size >= maxSuppliersOffline
@@ -298,22 +302,99 @@ const BazaarRegistration = () => {
           return
         }
 
-        updated = [...latestRegs]
+        const mapped = (latestRegs || []).map(r => ({
+          id: r.id,
+          announcementId: r.announcement_id,
+          supplierId: r.supplier_id,
+          supplierName: (() => { const u = users.find(x => x.id === r.supplier_id); return u ? u.name : null })(),
+          participateOnline: r.participate_online,
+          participateOffline: r.participate_offline,
+          notes: r.notes,
+          status: r.status,
+          createdAt: r.created_at,
+          updatedAt: r.updated_at,
+          registrationProducts: r.registration_products || []
+        }))
+        updated = mapped
       }
 
+      const registrationProducts = []
+      const useSameProducts = !separateProducts
+
+      if (useSameProducts) {
+        const channel = (participateOnline && participateOffline) ? 'both' : (participateOnline ? 'online' : 'offline')
+          ; (selectedProducts || []).forEach((p, idx) => {
+            const data = p.data || {}
+            const stockKeyLabel = `offline-${p.label}`
+            const stockKeyId = p.data && p.data.id ? `id-${p.data.id}` : null
+            const item = {
+              channel,
+              nama_produk: data.namaProduk || p.label || null,
+              jenis_produk: data.jenisProduk || null,
+              keterangan: data.keterangan || null,
+              satuan: data.satuan || null,
+              ukuran: data.ukuran || null,
+              hjk: data.hjk || null,
+              hpp: data.hpp || null,
+              image_url: data.imageUrl || null
+            }
+            if (channel === 'offline' || channel === 'both') {
+              const val = (stockKeyId && offlineStocks[stockKeyId]) ? offlineStocks[stockKeyId] : offlineStocks[stockKeyLabel]
+              item.offline_stock = val ? parseInt(val) : null
+            } else {
+              item.offline_stock = null
+            }
+            registrationProducts.push(item)
+          })
+      } else {
+        ; (selectedProductsOnline || []).forEach(p => {
+          const data = p.data || {}
+          registrationProducts.push({
+            channel: 'online',
+            nama_produk: data.namaProduk || p.label || null,
+            jenis_produk: data.jenisProduk || null,
+            keterangan: data.keterangan || null,
+            satuan: data.satuan || null,
+            ukuran: data.ukuran || null,
+            hjk: data.hjk || null,
+            hpp: data.hpp || null,
+            image_url: data.imageUrl || null,
+            offline_stock: null
+          })
+        })
+          ; (selectedProductsOffline || []).forEach((p, idx) => {
+            const data = p.data || {}
+            const stockKeyLabel = `offline-${p.label}`
+            const stockKeyId = p.data && p.data.id ? `id-${p.data.id}` : null
+            const stockVal = (stockKeyId && offlineStocks[stockKeyId]) ? offlineStocks[stockKeyId] : offlineStocks[stockKeyLabel]
+            registrationProducts.push({
+              channel: 'offline',
+              nama_produk: data.namaProduk || p.label || null,
+              jenis_produk: data.jenisProduk || null,
+              keterangan: data.keterangan || null,
+              satuan: data.satuan || null,
+              ukuran: data.ukuran || null,
+              hjk: data.hjk || null,
+              hpp: data.hpp || null,
+              image_url: data.imageUrl || null,
+              offline_stock: stockVal ? parseInt(stockVal) : null
+            })
+          })
+      }
+
+      const tempId = editId ? editId : `temp-${Date.now()}`
       const newRegistration = {
-        id: editId ? editId : Date.now().toString(),
+        id: tempId,
         announcementId,
         supplierName,
         participateOnline,
         participateOffline,
         notes,
-        status: editId ? 'pending' : 'pending',
+        status: 'pending',
         createdAt: editId ? (registrations.find(r => r?.id === editId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        selectedProducts: separateProducts ? [] : selectedProducts,
-        selectedProductsOnline: separateProducts ? selectedProductsOnline : [],
-        selectedProductsOffline: separateProducts ? selectedProductsOffline : []
+        useSameProducts,
+        registrationProducts
       }
 
       let isNew = false
@@ -334,28 +415,6 @@ const BazaarRegistration = () => {
 
       await saveBazaarData({ ...bazaarData, registrations: updated })
 
-      if (isNew) {
-        await logBazaarAction({
-          user,
-          action: 'add',
-          target: 'registration',
-          targetId: newRegistration.id,
-          dataBefore: null,
-          dataAfter: newRegistration,
-          description: `User registered for bazaar: ${newRegistration.announcementId}`
-        })
-      } else if (editId && previousRegistration) {
-        await logBazaarAction({
-          user,
-          action: 'edit',
-          target: 'registration',
-          targetId: newRegistration.id,
-          dataBefore: previousRegistration,
-          dataAfter: newRegistration,
-          description: `User edited registration for bazaar: ${newRegistration.announcementId}`
-        })
-      }
-
       Swal.fire('Berhasil', `Pendaftaran berhasil ${editId ? 'diubah' : 'ditambahkan'}`, 'success')
 
       setForm({
@@ -369,6 +428,7 @@ const BazaarRegistration = () => {
         notes: '',
         status: 'pending'
       })
+      setOfflineStocks({})
       setEditIndex(null)
       setEditId(null)
       setModalOpen(false)
@@ -383,14 +443,58 @@ const BazaarRegistration = () => {
 
   const handleEdit = (row, index) => {
     const announcement = announcements.find(a => a.id === row.announcementId)
+
+    let selectedProducts = []
+    let selectedProductsOnline = []
+    let selectedProductsOffline = []
+
+    const regProds = row.registrationProducts || row.selectedProducts || []
+
+    if (row.useSameProducts || !row.registrationProducts) {
+      selectedProducts = regProds.map(p => ({
+        label: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+        value: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+        data: p
+      }))
+    } else {
+      selectedProductsOnline = regProds
+        .filter(p => p.channel === 'online' || p.channel === 'both')
+        .map(p => ({
+          label: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+          value: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+          data: p
+        }))
+
+      selectedProductsOffline = regProds
+        .filter(p => p.channel === 'offline' || p.channel === 'both')
+        .map(p => ({
+          label: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+          value: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+          data: p
+        }))
+    }
+
+    const offlineStocksMap = {}
+    regProds.forEach(rp => {
+      const rawStock = rp.offline_stock !== undefined ? rp.offline_stock : (rp.offlineStock !== undefined ? rp.offlineStock : null)
+      if ((rp.channel === 'offline' || rp.channel === 'both') && rawStock !== null && rawStock !== undefined) {
+        const name = rp.nama_produk || rp.namaProduk || rp.label
+        const productLabel = `${name} ${rp.ukuran || ''} ${rp.satuan || ''}`.trim()
+        const stockValue = String(rawStock)
+        offlineStocksMap[`offline-${productLabel}`] = stockValue
+        if (rp.id) offlineStocksMap[`id-${rp.id}`] = stockValue
+      }
+    })
+    setOfflineStocks(offlineStocksMap)
+
     setForm({
       announcementId: row.announcementId,
       supplierName: row.supplierName,
       participateOnline: row.participateOnline,
       participateOffline: row.participateOffline,
-      selectedProducts: row.selectedProducts || [],
-      selectedProductsOnline: row.selectedProductsOnline || [],
-      selectedProductsOffline: row.selectedProductsOffline || [],
+      selectedProducts,
+      selectedProductsOnline,
+      selectedProductsOffline,
       notes: row.notes,
       status: row.status
     })
@@ -399,8 +503,7 @@ const BazaarRegistration = () => {
     setEditId(row.id)
     setModalOpen(true)
     setSeparateProducts(
-      (Array.isArray(row.selectedProductsOnline) && row.selectedProductsOnline.length > 0) ||
-      (Array.isArray(row.selectedProductsOffline) && row.selectedProductsOffline.length > 0)
+      selectedProductsOnline.length > 0 || selectedProductsOffline.length > 0
     )
 
     setTimeout(() => {
@@ -420,14 +523,6 @@ const BazaarRegistration = () => {
   const handleAdd = async () => {
     setLoading(true)
     try {
-      const { data: refreshed } = await supabase
-        .from('bazaar_data')
-        .select('*')
-        .single()
-
-      if (refreshed) {
-        saveBazaarData(refreshed)
-      }
 
       setForm({
         announcementId: '',
@@ -440,6 +535,7 @@ const BazaarRegistration = () => {
         notes: '',
         status: 'pending'
       })
+      setOfflineStocks({})
       setSelectedAnnouncement(null)
       setEditIndex(null)
       setEditId(null)
@@ -450,6 +546,11 @@ const BazaarRegistration = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const closeModal = () => {
+    setModalOpen(false)
+    setOfflineStocks({})
   }
 
   const handleDelete = async (index) => {
@@ -467,23 +568,10 @@ const BazaarRegistration = () => {
 
     setLoading(true)
     try {
-      const actualIndex = registrations.findIndex(r => r?.id === row.id)
-      if (actualIndex === -1) {
-        Swal.fire('Error', 'Data tidak ditemukan', 'error')
-        return
-      }
-      await logBazaarAction({
-        user,
-        action: 'delete',
-        target: 'registration',
-        targetId: row.id,
-        dataBefore: registrations[actualIndex],
-        dataAfter: null,
-        description: `User deleted registration for bazaar: ${row.announcementId}`
-      })
-      const updated = [...registrations]
-      updated.splice(actualIndex, 1)
-      await saveBazaarData({ ...bazaarData, registrations: updated })
+      await supabase.from('registration_products').delete().eq('registration_id', row.id)
+      await supabase.from('registrations').delete().eq('id', row.id)
+
+      setRegistrations(prev => prev.filter(r => r.id !== row.id))
       Swal.fire('Dihapus!', 'Pendaftaran berhasil dihapus.', 'success')
     } catch (error) {
       console.error('Error deleting registration:', error)
@@ -533,6 +621,9 @@ const BazaarRegistration = () => {
     {
       name: 'Jumlah Produk',
       selector: row => {
+        if (row.registrationProducts?.length) {
+          return row.registrationProducts.length
+        }
         if (row.selectedProductsOnline?.length || row.selectedProductsOffline?.length) {
           let count = 0
           if (row.selectedProductsOnline) count += row.selectedProductsOnline.length
@@ -619,15 +710,6 @@ const BazaarRegistration = () => {
   const onlineFull = onlineSuppliers.size >= maxSuppliersOnline
   const offlineFull = offlineSuppliers.size >= maxSuppliersOffline
 
-  // useEffect(() => {
-  //   if (!modalOpen) return
-  //   if (onlineFull && form.participateOnline) {
-  //     setForm(f => ({ ...f, participateOnline: false }))
-  //   }
-  //   if (offlineFull && form.participateOffline) {
-  //     setForm(f => ({ ...f, participateOffline: false }))
-  //   }
-  // }, [modalOpen, onlineFull, offlineFull])
 
   useEffect(() => {
     if (
@@ -647,7 +729,7 @@ const BazaarRegistration = () => {
           <h4>Pendaftaran Bazaar</h4>
         </Col>
         <Col xs="12" md="6" className="text-end mt-2 mt-md-0">
-          <Button color="primary" className="me-2" onClick={handleAdd} disabled={loading}>
+          <Button color="primary" className="me-2" onClick={handleAdd} disabled={loading || availableAnnouncements.length === 0}>
             Daftar Bazaar Baru
           </Button>
           <Button color="warning" onClick={() => window.history.back()} disabled={loading}>
@@ -688,8 +770,8 @@ const BazaarRegistration = () => {
       </div>
 
       {/* Add/Edit Modal */}
-      <Modal isOpen={modalOpen} toggle={() => setModalOpen(!modalOpen)} centered size="lg">
-        <ModalHeader toggle={() => setModalOpen(!modalOpen)}>
+      <Modal isOpen={modalOpen} toggle={closeModal} centered size="lg">
+        <ModalHeader toggle={closeModal}>
           {editId ? 'Edit Pendaftaran Bazaar' : 'Daftar Bazaar Baru'}
         </ModalHeader>
         <ModalBody>
@@ -866,58 +948,128 @@ const BazaarRegistration = () => {
                     })()}
                   </Col>
                 </Row>
+                {form.selectedProductsOffline.length > 0 && (
+                  <Row>
+                    <Col xs="12" className="mb-3">
+                      <Label>Stok Produk Offline</Label>
+                      <div className="border-top border-bottom p-3">
+                        {form.selectedProductsOffline.map((product, idx) => (
+                          <Row key={idx} className="mb-2">
+                            <Col xs="8">
+                              <small className="text-muted">{product.label}</small>
+                            </Col>
+                            <Col xs="4">
+                              <Input
+                                type="number"
+                                min="0"
+                                placeholder="Stok"
+                                value={offlineStocks[`id-${product.data?.id}`] ?? offlineStocks[`offline-${product.label}`] ?? ''}
+                                onChange={e => {
+                                  const v = e.target.value
+                                  setOfflineStocks(prev => ({
+                                    ...prev,
+                                    [`offline-${product.label}`]: v,
+                                    ...(product.data?.id ? { [`id-${product.data.id}`]: v } : {})
+                                  }))
+                                }}
+                                disabled={loading}
+                                className="form-control-sm"
+                              />
+                            </Col>
+                          </Row>
+                        ))}
+                      </div>
+                    </Col>
+                  </Row>
+                )}
               </>
             ) : (
-              <Row>
-                <Col xs="12" className="mb-3">
-                  <Label>Pilih Produk *</Label>
-                  <Select
-                    isMulti
-                    options={userProducts}
-                    value={form.selectedProducts}
-                    onChange={selected => {
-                      const baseSet = new Set(selected.map(p => getDynamicBaseProduct(p.label, selected.map(x => x.label))))
+              <>
+                <Row>
+                  <Col xs="12" className="mb-3">
+                    <Label>Pilih Produk *</Label>
+                    <Select
+                      isMulti
+                      options={userProducts}
+                      value={form.selectedProducts}
+                      onChange={selected => {
+                        const baseSet = new Set(selected.map(p => getDynamicBaseProduct(p.label, selected.map(x => x.label))))
+                        let allowedMax = maxProductsOffline
+                        if (form.participateOnline && !form.participateOffline) allowedMax = maxProductsOnline
+                        else if (!form.participateOnline && form.participateOffline) allowedMax = maxProductsOffline
+                        else if (form.participateOnline && form.participateOffline) allowedMax = Math.min(maxProductsOnline, maxProductsOffline)
+
+                        if (baseSet.size <= allowedMax) {
+                          setForm(f => ({ ...f, selectedProducts: selected }))
+                        }
+                      }}
+                      placeholder={`Pilih produk yang akan dijual di bazaar ini (maks ${form.participateOnline && !form.participateOffline ? maxProductsOnline : (!form.participateOnline && form.participateOffline ? maxProductsOffline : Math.min(maxProductsOnline, maxProductsOffline))} produk utama, maksimal ${Math.max(maxSuppliersOnline, maxSuppliersOffline)} supplier)`}
+                      isDisabled={
+                        loading ||
+                        (!form.participateOnline && !form.participateOffline) ||
+                        ((onlineFull && !form.participateOnline) && (offlineFull && !form.participateOffline))
+                      }
+                    />
+                    {(() => {
+                      const baseProducts = form.selectedProducts.map(p => getDynamicBaseProduct(p.label, form.selectedProducts.map(x => x.label)))
+                      const uniqueBaseProducts = Array.from(new Set(baseProducts))
                       let allowedMax = maxProductsOffline
                       if (form.participateOnline && !form.participateOffline) allowedMax = maxProductsOnline
                       else if (!form.participateOnline && form.participateOffline) allowedMax = maxProductsOffline
                       else if (form.participateOnline && form.participateOffline) allowedMax = Math.min(maxProductsOnline, maxProductsOffline)
-
-                      if (baseSet.size <= allowedMax) {
-                        setForm(f => ({ ...f, selectedProducts: selected }))
-                      }
-                    }}
-                    placeholder={`Pilih produk yang akan dijual di bazaar ini (maks ${form.participateOnline && !form.participateOffline ? maxProductsOnline : (!form.participateOnline && form.participateOffline ? maxProductsOffline : Math.min(maxProductsOnline, maxProductsOffline))} produk utama, maksimal ${Math.max(maxSuppliersOnline, maxSuppliersOffline)} supplier)`}
-                    isDisabled={
-                      loading ||
-                      (!form.participateOnline && !form.participateOffline) ||
-                      ((onlineFull && !form.participateOnline) && (offlineFull && !form.participateOffline))
-                    }
-                  />
-                  {(() => {
-                    const baseProducts = form.selectedProducts.map(p => getDynamicBaseProduct(p.label, form.selectedProducts.map(x => x.label)))
-                    const uniqueBaseProducts = Array.from(new Set(baseProducts))
-                    let allowedMax = maxProductsOffline
-                    if (form.participateOnline && !form.participateOffline) allowedMax = maxProductsOnline
-                    else if (!form.participateOnline && form.participateOffline) allowedMax = maxProductsOffline
-                    else if (form.participateOnline && form.participateOffline) allowedMax = Math.min(maxProductsOnline, maxProductsOffline)
-                    return (
-                      <small className={`${uniqueBaseProducts.length >= allowedMax ? 'text-danger' : 'text-muted'}`}>
-                        Pilih produk yang akan Anda jual di bazaar ini (maks {allowedMax} produk utama)
-                        {uniqueBaseProducts.length > 0 && (
-                          <span className="ms-2">
-                            ({uniqueBaseProducts.length}/{allowedMax} produk utama terpilih)
-                          </span>
-                        )}
-                        {form.selectedProducts.length > uniqueBaseProducts.length && (
-                          <span className="ms-2 text-info">
-                            ({form.selectedProducts.length - uniqueBaseProducts.length} varian/variasi)
-                          </span>
-                        )}
-                      </small>
-                    )
-                  })()}
-                </Col>
-              </Row>
+                      return (
+                        <small className={`${uniqueBaseProducts.length >= allowedMax ? 'text-danger' : 'text-muted'}`}>
+                          Pilih produk yang akan Anda jual di bazaar ini (maks {allowedMax} produk utama)
+                          {uniqueBaseProducts.length > 0 && (
+                            <span className="ms-2">
+                              ({uniqueBaseProducts.length}/{allowedMax} produk utama terpilih)
+                            </span>
+                          )}
+                          {form.selectedProducts.length > uniqueBaseProducts.length && (
+                            <span className="ms-2 text-info">
+                              ({form.selectedProducts.length - uniqueBaseProducts.length} varian/variasi)
+                            </span>
+                          )}
+                        </small>
+                      )
+                    })()}
+                  </Col>
+                </Row>
+                {form.selectedProducts.length > 0 && (form.participateOffline || (!form.participateOnline && form.participateOffline)) && (
+                  <Row>
+                    <Col xs="12" className="mb-3">
+                      <Label>Stok Produk Offline</Label>
+                      <div className="border-top border-bottom p-3">
+                        {form.selectedProducts.map((product, idx) => (
+                          <Row key={idx} className="mb-2">
+                            <Col xs="8">
+                              <small className="text-muted">{product.label}</small>
+                            </Col>
+                            <Col xs="4">
+                              <Input
+                                type="number"
+                                min="0"
+                                placeholder="Stok"
+                                value={offlineStocks[`id-${product.data?.id}`] ?? offlineStocks[`offline-${product.label}`] ?? ''}
+                                onChange={e => {
+                                  const v = e.target.value
+                                  setOfflineStocks(prev => ({
+                                    ...prev,
+                                    [`offline-${product.label}`]: v,
+                                    ...(product.data?.id ? { [`id-${product.data.id}`]: v } : {})
+                                  }))
+                                }}
+                                disabled={loading}
+                                className="form-control-sm"
+                              />
+                            </Col>
+                          </Row>
+                        ))}
+                      </div>
+                    </Col>
+                  </Row>
+                )}
+              </>
             )}
 
             <Row>
@@ -959,9 +1111,28 @@ const BazaarRegistration = () => {
                 const last = lastRegistration
                 if (!last) return
 
-                const lastHasSeparate =
-                  (last.selectedProductsOnline?.length || 0) > 0 ||
-                  (last.selectedProductsOffline?.length || 0) > 0
+                const lastProds = last.registrationProducts || []
+                const lastSelectedOnline = lastProds
+                  .filter(p => p.channel === 'online' || p.channel === 'both')
+                  .map(p => ({
+                    label: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+                    value: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+                    data: p
+                  }))
+                const lastSelectedOffline = lastProds
+                  .filter(p => p.channel === 'offline' || p.channel === 'both')
+                  .map(p => ({
+                    label: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+                    value: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+                    data: p
+                  }))
+                const lastSelectedSame = lastProds
+                  .filter(p => p.channel === 'both')
+                  .map(p => ({
+                    label: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+                    value: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+                    data: p
+                  }))
 
                 const allowOnline = last.participateOnline && !onlineFullCurrent
                 const allowOffline = last.participateOffline && !offlineFullCurrent
@@ -970,23 +1141,33 @@ const BazaarRegistration = () => {
                 let selectedProductsOnline = []
                 let selectedProductsOffline = []
 
+                const lastHasSeparate = lastSelectedOnline.length > 0 || lastSelectedOffline.length > 0
+
                 if (lastHasSeparate) {
                   if (allowOnline && allowOffline) {
-                    selectedProductsOnline = last.selectedProductsOnline || []
-                    selectedProductsOffline = last.selectedProductsOffline || []
-                    selectedProducts = []
+                    selectedProductsOnline = lastSelectedOnline
+                    selectedProductsOffline = lastSelectedOffline
                   } else if (allowOnline && !allowOffline) {
-                    selectedProducts = last.selectedProductsOnline || []
+                    selectedProducts = lastSelectedOnline
                   } else if (!allowOnline && allowOffline) {
-                    selectedProducts = last.selectedProductsOffline || []
-                  } else {
-                    selectedProducts = []
+                    selectedProducts = lastSelectedOffline
                   }
                 } else {
                   if (allowOnline || allowOffline) {
-                    selectedProducts = last.selectedProducts || []
+                    selectedProducts = lastSelectedSame.length ? lastSelectedSame : lastSelectedOnline.concat(lastSelectedOffline)
                   }
                 }
+
+                const offlineMap = {}
+                lastProds.forEach(p => {
+                  const rawStock = p.offline_stock !== undefined ? p.offline_stock : (p.offlineStock !== undefined ? p.offlineStock : null)
+                  if (rawStock !== null && rawStock !== undefined) {
+                    const label = `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim()
+                    offlineMap[`offline-${label}`] = String(rawStock)
+                    if (p.id) offlineMap[`id-${p.id}`] = String(rawStock)
+                  }
+                })
+
                 setForm(f => ({
                   ...f,
                   participateOnline: allowOnline,
@@ -996,6 +1177,8 @@ const BazaarRegistration = () => {
                   selectedProductsOffline
                 }))
                 setSeparateProducts(allowOnline && allowOffline && lastHasSeparate)
+                setOfflineStocks(offlineMap)
+
                 if (!allowOnline || !allowOffline) {
                   Swal.fire(
                     'Beberapa mode tidak bisa digunakan',
@@ -1012,7 +1195,7 @@ const BazaarRegistration = () => {
           <Button color="primary" onClick={handleSave} disabled={loading}>
             {loading ? 'Loading...' : (editId ? 'Update' : 'Daftar')}
           </Button>
-          <Button color="secondary" onClick={() => setModalOpen(false)} disabled={loading}>
+          <Button color="secondary" onClick={closeModal} disabled={loading}>
             Batal
           </Button>
         </ModalFooter>
@@ -1027,7 +1210,7 @@ const BazaarRegistration = () => {
           {selectedRegistration && (
             <div>
               <Card className="mb-3">
-                <CardHeader>
+                <CardHeader className="pb-0">
                   <h6>Informasi Pendaftaran</h6>
                 </CardHeader>
                 <CardBody>
@@ -1052,36 +1235,69 @@ const BazaarRegistration = () => {
                     </Col>
                     <Col xs="12" md="6">
                       <strong>Jumlah Produk:</strong><br />
-                      {selectedRegistration.selectedProductsOnline?.length || selectedRegistration.selectedProductsOffline?.length
-                        ? <>
-                          {selectedRegistration.selectedProductsOnline?.length > 0 && <span>Online: {selectedRegistration.selectedProductsOnline.length} </span>}
-                          {selectedRegistration.selectedProductsOffline?.length > 0 && <span>Offline: {selectedRegistration.selectedProductsOffline.length}</span>}
-                        </>
-                        : selectedRegistration.selectedProducts?.length || 0}
+                      {selectedRegistration.registrationProducts?.length || 0}
                     </Col>
                   </Row>
                   <Row className="mt-2">
                     <Col xs="12">
                       <strong>Produk yang Didaftarkan:</strong><br />
                       <ul className="mt-1">
-                        {selectedRegistration.selectedProductsOnline?.length || selectedRegistration.selectedProductsOffline?.length
-                          ? <>
+                        {selectedRegistration.registrationProducts && selectedRegistration.registrationProducts.length > 0 ? (
+                          (() => {
+                            const online = selectedRegistration.registrationProducts.filter(p => p.channel === 'online' || p.channel === 'both')
+                            const offline = selectedRegistration.registrationProducts.filter(p => p.channel === 'offline' || p.channel === 'both')
+
+                            return (
+                              <>
+                                {online.length > 0 && (
+                                  <>
+                                    <li><strong>Online:</strong></li>
+                                    {online.map((product, index) => (
+                                      <li key={"on-" + index} style={{ marginLeft: 16 }}>
+                                        {(product.nama_produk || product.namaProduk || product.label)} {(product.ukuran || '')} {(product.satuan || '')}
+                                      </li>
+                                    ))}
+                                  </>
+                                )}
+                                {offline.length > 0 && (
+                                  <>
+                                    <li><strong>Offline:</strong></li>
+                                    {offline.map((product, index) => (
+                                      <li key={"off-" + index} style={{ marginLeft: 16 }}>
+                                        {(product.nama_produk || product.namaProduk || product.label)} {(product.ukuran || '')} {(product.satuan || '')}
+                                        {((product.offline_stock !== undefined && product.offline_stock !== null) || (product.offlineStock !== undefined && product.offlineStock !== null)) && (
+                                          <span className="text-muted"> — Stok: {product.offline_stock ?? product.offlineStock}</span>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </>
+                                )}
+                              </>
+                            )
+                          })()
+                        ) : selectedRegistration.selectedProductsOnline?.length || selectedRegistration.selectedProductsOffline?.length ? (
+                          <>
                             {selectedRegistration.selectedProductsOnline?.length > 0 && <>
                               <li><strong>Online:</strong></li>
                               {selectedRegistration.selectedProductsOnline.map((product, index) => (
-                                <li key={"on-" + index} style={{ marginLeft: 16 }}>{product.label}</li>
+                                <li key={"on-" + index} style={{ marginLeft: 16 }}>{(product.nama_produk || product.namaProduk || product.label)} {(product.ukuran || '')} {(product.satuan || '')}</li>
                               ))}
                             </>}
                             {selectedRegistration.selectedProductsOffline?.length > 0 && <>
                               <li><strong>Offline:</strong></li>
                               {selectedRegistration.selectedProductsOffline.map((product, index) => (
-                                <li key={"off-" + index} style={{ marginLeft: 16 }}>{product.label}</li>
+                                <li key={"off-" + index} style={{ marginLeft: 16 }}>
+                                  {(product.nama_produk || product.namaProduk || product.label)} {(product.ukuran || '')} {(product.satuan || '')}
+                                  {((product.offline_stock !== undefined && product.offline_stock !== null) || (product.offlineStock !== undefined && product.offlineStock !== null)) && (
+                                    <span className="text-muted"> — Stok: {product.offline_stock ?? product.offlineStock}</span>
+                                  )}
+                                </li>
                               ))}
                             </>}
                           </>
-                          : selectedRegistration.selectedProducts?.map((product, index) => (
-                            <li key={index}>{product.label}</li>
-                          ))}
+                        ) : selectedRegistration.selectedProducts?.map((product, index) => (
+                          <li key={index}>{product.label}</li>
+                        ))}
                       </ul>
                     </Col>
                   </Row>

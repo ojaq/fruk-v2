@@ -7,165 +7,494 @@ export const useAuth = () => useContext(AuthContext)
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
-  const [userList, setUserList] = useState([])
-  const [registeredUsers, setRegisteredUsers] = useState([])
   const [loading, setLoading] = useState(true)
-  const [profile, setProfile] = useState(JSON.parse(localStorage.getItem('supplierProfile')) || {})
-  const [profileModalOpen, setProfileModalOpen] = useState(false)
+  const [users, setUsers] = useState([])
+  const [products, setProducts] = useState([])
   const [productData, setProductData] = useState({})
+  const [registeredUsers, setRegisteredUsers] = useState([])
+  const [weeks, setWeeks] = useState([])
+  const [bazaarData, setBazaarData] = useState(null)
   const [weekData, setWeekData] = useState({})
-  const [bazaarData, setBazaarData] = useState({})
+  const [announcements, setAnnouncements] = useState([])
+  const [registrations, setRegistrations] = useState([])
+  const [orders, setOrders] = useState([])
 
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
   const toggleProfileModal = () => setProfileModalOpen(prev => !prev)
 
   const fetchUsers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('name')
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('is_deleted', false)
+      .order('name')
 
-      if (error) {
-        console.error('Error fetching users:', error)
-        Swal.fire('Error', 'Gagal mengambil data pengguna', 'error')
-        return
-      }
-
-      setRegisteredUsers(data || [])
-      setUserList(data || [])
-    } catch (error) {
-      console.error('Error fetching users:', error)
-      Swal.fire('Error', 'Gagal mengambil data pengguna', 'error')
+    if (error) {
+      Swal.fire('Error', 'Gagal mengambil users', 'error')
+      return
     }
+    setUsers(data)
   }
 
   const fetchProducts = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('products')
-        .select('*')
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('is_deleted', false)
 
-      if (error) {
-        console.error('Error fetching products:', error)
-        Swal.fire('Error', 'Gagal mengambil data produk', 'error')
-        return
+    if (error) {
+      Swal.fire('Error', 'Gagal mengambil produk', 'error')
+      return
+    }
+    setProducts(data)
+  }
+
+  useEffect(() => {
+    const usersById = {}
+    users.forEach(u => { usersById[u.id] = u })
+
+    const mapped = products.map(p => {
+      const owner = usersById[p.owner_id]
+      return {
+        id: p.id,
+        ownerId: p.owner_id,
+        namaProduk: p.nama_produk,
+        jenisProduk: p.jenis_produk,
+        keterangan: p.keterangan,
+        satuan: p.satuan,
+        ukuran: p.ukuran,
+        hjk: p.hjk,
+        hpp: p.hpp,
+        aktif: p.aktif,
+        imageUrl: p.image_url,
+        isDeleted: p.is_deleted,
+        createdAt: p.created_at,
+        updatedAt: p.updated_at,
+        namaSupplier: owner?.nama_supplier || owner?.namaSupplier || owner?.name || null,
+        namaBank: owner?.nama_bank || owner?.namaBank || null,
+        noRekening: owner?.no_rekening || owner?.noRekening || null,
+        namaPenerima: owner?.nama_penerima || owner?.namaPenerima || null
       }
+    })
 
-      const transformed = {}
-      data?.forEach(item => {
-        if (!transformed[item.owner]) {
-          transformed[item.owner] = []
+    const grouped = {}
+    mapped.forEach(p => {
+      const name = p.namaSupplier || 'unknown'
+      if (!grouped[name]) grouped[name] = []
+      grouped[name].push(p)
+    })
+    setProductData(grouped)
+
+    const allowedRoles = ['supplier', 'admin', 'dev']
+    const regs = users
+      .filter(u => allowedRoles.includes(u.role) && !u.is_deleted)
+      .map(u => ({
+        id: u.id,
+        name: u.name,
+        role: u.role,
+        namaSupplier: u.nama_supplier || u.namaSupplier || null,
+        namaBank: u.nama_bank || u.namaBank || null,
+        noRekening: u.no_rekening || u.noRekening || null,
+        namaPenerima: u.nama_penerima || u.namaPenerima || null
+      }))
+
+    setRegisteredUsers(regs)
+  }, [users, products])
+
+  const saveProductData = async (supplierName, productsArray) => {
+    try {
+      const owner = users.find(u => u.name === supplierName)
+      if (!owner) throw new Error('Owner not found')
+
+      const ops = productsArray.map(async p => {
+        const payload = {
+          owner_id: owner.id,
+          nama_produk: p.namaProduk,
+          jenis_produk: p.jenisProduk,
+          keterangan: p.keterangan,
+          satuan: p.satuan,
+          ukuran: p.ukuran,
+          hjk: p.hjk,
+          hpp: p.hpp,
+          image_url: p.imageUrl || null,
+          aktif: !!p.aktif,
+          is_deleted: !!p.isDeleted
         }
-        transformed[item.owner].push(item.data)
+
+        if (p.id) {
+          const { error } = await supabase
+            .from('products')
+            .update(payload)
+            .eq('id', p.id)
+          if (error) throw error
+        } else {
+          const { error } = await supabase
+            .from('products')
+            .insert([payload])
+          if (error) throw error
+        }
       })
 
-      setProductData(transformed)
-    } catch (error) {
-      console.error('Error fetching products:', error)
-      Swal.fire('Error', 'Gagal mengambil data produk', 'error')
+      await Promise.all(ops)
+      await fetchProducts()
+      Swal.fire('Berhasil', 'Data produk tersimpan', 'success')
+    } catch (e) {
+      console.error(e)
+      Swal.fire('Error', 'Gagal menyimpan produk', 'error')
+      throw e
+    }
+  }
+
+  const buildBazaarData = () => {
+    const anns = (announcements || []).map(a => {
+      const creator = users.find(u => u.id === a.created_by)
+
+      const week = a.week_id && weekData ? Object.values(weekData).find(w => w.id === a.week_id) : null
+
+      return {
+        id: a.id,
+        title: a.title,
+        greeting: a.greeting,
+        description: a.description,
+        terms: a.terms,
+        status: a.status,
+
+        onlineDateStart: a.online_date_start,
+        onlineDateEnd: a.online_date_end,
+        offlineDate: a.offline_date,
+        deliveryDate: a.delivery_date,
+        deliveryTime: a.delivery_time,
+        registrationDeadline: a.registration_deadline,
+
+        maxSuppliersOnline: a.max_suppliers_online,
+        maxSuppliersOffline: a.max_suppliers_offline,
+        maxProductsPerSupplier: a.max_products_per_supplier,
+
+        weekCode: week ? `W${Object.keys(weekData).find(k => weekData[k].id === week.id).replace('W', '')}` : null,
+
+        createdAt: a.created_at,
+        updatedAt: a.updated_at,
+        createdBy: creator?.name || null,
+        isDeleted: a.is_deleted || false
+      }
+    })
+
+    const regs = (registrations || []).map(r => {
+      const supplier = users.find(u => u.id === r.supplier_id)
+      const reviewer = users.find(u => u.id === r.reviewed_by)
+
+      return {
+        id: r.id,
+        announcementId: r.announcement_id,
+        supplierId: r.supplier_id,
+        supplierName: supplier?.name || null,
+
+        status: r.status,
+        notes: r.notes,
+        adminNotes: r.adminNotes,
+
+        participateOnline: r.participate_online,
+        participateOffline: r.participate_offline,
+        useSameProducts: r.use_same_products,
+        offlineStock: r.offline_stock,
+
+        reviewedBy: reviewer?.name || null,
+
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        isDeleted: r.is_deleted || false,
+
+        registrationProducts: (r.registration_products || []).map(p => ({
+          id: p.id,
+          registrationId: p.registration_id,
+          channel: p.channel,
+
+          namaProduk: p.nama_produk,
+          jenisProduk: p.jenis_produk,
+          keterangan: p.keterangan,
+          satuan: p.satuan,
+          ukuran: p.ukuran,
+          hjk: p.hjk,
+          hpp: p.hpp,
+          imageUrl: p.image_url,
+          offline_stock: p.offline_stock,
+
+          isActive: p.is_active,
+          isDeleted: p.is_deleted,
+          createdAt: p.created_at
+        }))
+      }
+    })
+
+    setBazaarData({
+      announcements: anns,
+      registrations: regs
+    })
+  }
+
+  useEffect(() => {
+    const weekMap = {}
+
+      ; (weeks || []).forEach(w => {
+        const code = w.week_code || null
+        if (!code) return
+        weekMap[code] = {
+          id: w.id,
+          isActive: w.is_active,
+          createdAt: w.created_at
+        }
+      })
+
+    setWeekData(weekMap)
+  }, [weeks])
+
+  useEffect(() => {
+    buildBazaarData()
+  }, [announcements, registrations, users, weekData])
+
+  const logBazaarAction = async ({ user: actionUser, action, target, targetId, dataBefore, dataAfter, description }) => {
+    try {
+      await supabase.from('bazaar_logs').insert([{ user_name: actionUser?.name || actionUser?.id || null, action, target, target_id: targetId, data_before: dataBefore || null, data_after: dataAfter || null, description }])
+    } catch (e) {
+
+      console.debug('bazaar_logs insert failed (may be absent in new schema)', e?.message || e)
+    }
+  }
+
+  const saveBazaarData = async (newBazaarData) => {
+    try {
+
+      const incomingAnns = (newBazaarData?.announcements || []).slice()
+      const existingAnnIds = (announcements || []).map(a => a.id)
+
+      for (const ann of incomingAnns) {
+        const payload = {
+          title: ann.title,
+          greeting: ann.greeting,
+          description: ann.description,
+          terms: ann.terms,
+          status: ann.status,
+
+          online_date_start: ann.onlineDateStart || null,
+          online_date_end: ann.onlineDateEnd || null,
+          offline_date: ann.offlineDate || null,
+          delivery_date: ann.deliveryDate || null,
+          delivery_time: ann.deliveryTime || null,
+          registration_deadline: ann.registrationDeadline || null,
+
+          max_suppliers_online: ann.maxSuppliersOnline || null,
+          max_suppliers_offline: ann.maxSuppliersOffline || null,
+          max_products_per_supplier: ann.maxProductsPerSupplier || null,
+
+          is_deleted: ann.isDeleted || false
+        }
+
+        const weekCode = ann.weekCode && typeof ann.weekCode === 'string' ? ann.weekCode : null
+
+        if (weekCode) {
+          let week = weeks.find(w => w.week_code === weekCode)
+
+          if (!week) {
+            const { data: newWeek, error } = await supabase
+              .from('weeks')
+              .insert([{ week_code: weekCode }])
+              .select()
+              .single()
+
+            if (error) throw error
+            week = newWeek
+            await fetchWeeks()
+          }
+
+          payload.week_id = week.id
+        }
+
+        if (ann.id) {
+          await supabase.from('announcements').update(payload).eq('id', ann.id)
+        } else {
+          payload.created_by = user?.id || null
+          await supabase.from('announcements').insert([payload])
+        }
+      }
+
+
+      const incomingIds = new Set(incomingAnns.map(a => a.id).filter(Boolean))
+      const deletedWeekIds = new Set()
+
+      for (const existing of announcements || []) {
+        if (existing && !incomingIds.has(existing.id)) {
+
+          await supabase
+            .from('announcements')
+            .update({ is_deleted: true })
+            .eq('id', existing.id)
+        }
+      }
+
+
+      const incomingRegs = (newBazaarData?.registrations || []).slice()
+      const existingRegIds = (registrations || []).map(r => r.id)
+
+      for (const reg of incomingRegs) {
+        const payload = {
+          announcement_id: reg.announcementId,
+          supplier_id: (() => {
+            const u = users.find(x => x.name === reg.supplierName) || users.find(x => x.id === reg.supplierId)
+            return u ? u.id : reg.supplierId || null
+          })(),
+          status: reg.status,
+          notes: reg.notes || null,
+          adminNotes: reg.adminNotes || null,
+          participate_online: reg.participateOnline || false,
+          participate_offline: reg.participateOffline || false,
+          use_same_products: reg.useSameProducts || false,
+          offline_stock: reg.offlineStock || null,
+          reviewed_by: (() => {
+            const u = users.find(x => x.name === reg.reviewedBy)
+            return u ? u.id : null
+          })(),
+          is_deleted: reg.isDeleted || false
+        }
+
+        if (reg.id && existingRegIds.includes(reg.id)) {
+          await supabase.from('registrations').update(payload).eq('id', reg.id)
+
+
+          await supabase.from('registration_products').delete().eq('registration_id', reg.id)
+
+
+          if (reg.registrationProducts && reg.registrationProducts.length) {
+            const newProducts = reg.registrationProducts.map(p => ({
+              registration_id: reg.id,
+              channel: p.channel,
+              nama_produk: p.nama_produk || p.namaProduk || p.label || null,
+              jenis_produk: p.jenis_produk || p.jenisProduk || null,
+              keterangan: p.keterangan || null,
+              satuan: p.satuan || null,
+              ukuran: p.ukuran || null,
+              hjk: p.hjk || null,
+              hpp: p.hpp || null,
+              image_url: p.image_url || p.imageUrl || null,
+              offline_stock: p.offline_stock || null,
+              is_active: p.isActive === undefined ? true : p.isActive,
+              is_deleted: false
+            }))
+            if (newProducts.length) {
+              await supabase.from('registration_products').insert(newProducts)
+            }
+          }
+        } else {
+          const { data: newReg, error: regErr } = await supabase.from('registrations').insert([payload]).select().single()
+          if (regErr) throw regErr
+          if (reg.registrationProducts && reg.registrationProducts.length) {
+            const inserts = reg.registrationProducts.map(p => ({
+              registration_id: newReg.id,
+              channel: p.channel,
+              nama_produk: p.nama_produk || p.namaProduk || p.label || null,
+              jenis_produk: p.jenis_produk || p.jenisProduk || null,
+              keterangan: p.keterangan || null,
+              satuan: p.satuan || null,
+              ukuran: p.ukuran || null,
+              hjk: p.hjk || null,
+              hpp: p.hpp || null,
+              image_url: p.image_url || p.imageUrl || null,
+              offline_stock: p.offline_stock || null
+            }))
+            if (inserts.length) {
+              await supabase.from('registration_products').insert(inserts)
+            }
+          }
+        }
+      }
+
+
+      const incomingRegIds = new Set(incomingRegs.map(r => r.id).filter(Boolean))
+      for (const existing of registrations || []) {
+        if (existing && !incomingRegIds.has(existing.id)) {
+          await supabase.from('registrations').update({ is_deleted: true }).eq('id', existing.id)
+        }
+      }
+
+
+      await Promise.all([fetchAnnouncements(), fetchRegistrations(), fetchWeeks()])
+    } catch (e) {
+      console.error('saveBazaarData error', e)
+      Swal.fire('Error', 'Gagal menyimpan data bazaar', 'error')
+      throw e
     }
   }
 
   const fetchWeeks = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('weeks')
-        .select('*')
+    const { data, error } = await supabase
+      .from('weeks')
+      .select('*')
+      .order('created_at')
 
-      if (error) {
-        console.error('Error fetching weeks:', error)
-        Swal.fire('Error', 'Gagal mengambil data minggu', 'error')
-        return
-      }
-
-      const transformed = {}
-      data?.forEach(item => {
-        transformed[item.week_id] = item.entries
-      })
-
-      setWeekData(transformed)
-    } catch (error) {
-      console.error('Error fetching weeks:', error)
-      Swal.fire('Error', 'Gagal mengambil data minggu', 'error')
+    if (error) {
+      Swal.fire('Error', 'Gagal mengambil minggu', 'error')
+      return
     }
+    setWeeks(data)
   }
 
-  const fetchBazaarData = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('bazaar_data')
-        .select('*')
-        .eq('id', 1)
-        .single()
+  const fetchAnnouncements = async () => {
+    const { data, error } = await supabase
+      .from('announcements')
+      .select('*')
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
 
-      if (error) {
-        console.error('Error fetching bazaar data:', error)
-        return
-      }
-
-      if (data) {
-        let clean = data
-        while (clean?.data && clean.data?.id && clean.data.data) {
-          clean = clean.data
-        }
-        setBazaarData(clean?.data || clean)
-      } else {
-        setBazaarData({})
-      }
-    } catch (error) {
-      console.error('Error fetching bazaar data:', error)
+    if (error) {
+      Swal.fire('Error', 'Gagal mengambil pengumuman', 'error')
+      return
     }
+    setAnnouncements(data)
   }
 
-  useEffect(() => {
-    const initializeData = async () => {
-      try {
-        await Promise.all([
-          fetchUsers(),
-          fetchProducts(),
-          fetchWeeks(),
-          fetchBazaarData()
-        ])
+  const fetchRegistrations = async () => {
+    const { data, error } = await supabase
+      .from('registrations')
+      .select(`
+        *,
+        registration_products (*)
+      `)
+      .eq('is_deleted', false)
 
-        const storedUser = localStorage.getItem('currentUser')
-        if (storedUser) setUser(JSON.parse(storedUser))
-
-        setLoading(false)
-      } catch (error) {
-        console.error('Error initializing data:', error)
-        setLoading(false)
-      }
+    if (error) {
+      Swal.fire('Error', 'Gagal mengambil registrasi', 'error')
+      return
     }
-    
-    initializeData()
-  }, [])
+    setRegistrations(data)
+  }
 
-  const register = async (name, role) => {
-    const exists = registeredUsers.some((u) => u.name === name)
-    if (exists) throw new Error('Nama sudah terdaftar')
+  const fetchOrders = async () => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        registration_products (
+          nama_produk,
+          ukuran,
+          satuan,
+          hjk,
+          hpp
+        )
+      `)
+      .eq('is_deleted', false)
 
-    try {
-      const { error } = await supabase
-        .from('users')
-        .insert([{ name, role, requested_admin: 'false' }])
-
-      if (error) throw new Error(error.message)
-
-      await fetchUsers()
-      Swal.fire('Berhasil', 'Pengguna berhasil didaftarkan', 'success')
-    } catch (error) {
-      Swal.fire('Error', error.message, 'error')
-      throw new Error(error.message)
+    if (error) {
+      Swal.fire('Error', 'Gagal mengambil order', 'error')
+      return
     }
+    setOrders(data)
   }
 
   const login = (name) => {
-    const found = registeredUsers.find((u) => u.name === name)
-    if (!found) throw new Error('Pengguna tidak ditemukan')
+    const found = users.find(u => u.name === name)
+    if (!found) throw new Error('User tidak ditemukan')
 
-    const updatedUser = { ...found, profile: found.profile || {}, requestedAdmin: found.requested_admin || false }
-    setUser(updatedUser)
-    localStorage.setItem('currentUser', JSON.stringify(updatedUser))
+    setUser(found)
+    localStorage.setItem('currentUser', JSON.stringify(found))
   }
 
   const logout = () => {
@@ -173,236 +502,172 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('currentUser')
   }
 
-  const applyAsAdmin = async () => {
-    if (!user || user.role !== 'supplier') return
-
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ requested_admin: 'true' })
-        .eq('name', user.name)
-
-      if (error) {
-        console.error('Error updating admin request:', error)
-        Swal.fire('Error', 'Gagal mengajukan sebagai admin', 'error')
-        return
-      }
-
-      const updatedUser = { ...user, requestedAdmin: true }
-      setUser(updatedUser)
-      localStorage.setItem('currentUser', JSON.stringify(updatedUser))
-
-      await fetchUsers()
-      Swal.fire('Berhasil', 'Pengajuan admin berhasil dikirim', 'success')
-    } catch (error) {
-      console.error('Error applying as admin:', error)
-      Swal.fire('Error', 'Gagal mengajukan sebagai admin', 'error')
+  const register = async (name) => {
+    if (users.some(u => u.name === name)) {
+      throw new Error('Nama sudah terdaftar')
     }
+
+    const { error } = await supabase
+      .from('users')
+      .insert([{ name, role: 'supplier' }])
+
+    if (error) throw error
+
+    await fetchUsers()
+    Swal.fire('Berhasil', 'User terdaftar', 'success')
   }
 
-  const saveProfile = (newProfile) => {
-    setProfile(newProfile)
-    setUser(prev => prev ? { ...prev, profile: newProfile } : prev)
-    localStorage.setItem('currentUser', JSON.stringify({ ...user, profile: newProfile }))
-  }
-
-  const saveProductData = async (name, data) => {
+  const createRegistration = async ({
+    announcementId,
+    participateOnline,
+    participateOffline,
+    useSameProducts,
+    offlineStock,
+    productsOnline,
+    productsOffline
+  }) => {
     try {
-      const { error: deleteError } = await supabase
-        .from('products')
-        .delete()
-        .eq('owner', name)
-
-      if (deleteError) {
-        console.error('Error deleting products:', deleteError)
-        Swal.fire('Error', 'Gagal menyimpan data produk', 'error')
-        return
-      }
-
-      if (data.length > 0) {
-        const productsToInsert = data.map(item => ({
-          owner: name,
-          data: item
-        }))
-
-        const { error: insertError } = await supabase
-          .from('products')
-          .insert(productsToInsert)
-
-        if (insertError) {
-          console.error('Error inserting products:', insertError)
-          Swal.fire('Error', 'Gagal menyimpan data produk', 'error')
-          return
-        }
-      }
-
-      const updated = { ...productData, [name]: data }
-      setProductData(updated)
-      await fetchProducts()
-      Swal.fire('Berhasil', 'Data produk berhasil disimpan', 'success')
-    } catch (error) {
-      console.error('Error saving product data:', error)
-      Swal.fire('Error', 'Gagal menyimpan data produk', 'error')
-    }
-  }
-
-  const saveWeekData = async (sheetName, newSheetData) => {
-    try {
-      const { error } = await supabase
-        .from('weeks')
-        .upsert([{ week_id: sheetName, entries: newSheetData }])
-
-      if (error) {
-        console.error('Error saving week data:', error)
-        Swal.fire('Error', 'Gagal menyimpan data minggu', 'error')
-        return
-      }
-
-      const existing = { ...weekData }
-      const updated = { ...existing, [sheetName]: newSheetData }
-      setWeekData(updated)
-      await fetchWeeks()
-    } catch (error) {
-      console.error('Error saving week data:', error)
-      Swal.fire('Error', 'Gagal menyimpan data minggu', 'error')
-    }
-  }
-
-  const saveBazaarData = async (newBazaarData) => {
-    try {
-      const cleanData = newBazaarData?.data ? newBazaarData.data : newBazaarData
-
-      const { error } = await supabase
-        .from('bazaar_data')
-        .upsert([{ id: 1, data: cleanData }])
+      const { data: reg, error } = await supabase
+        .from('registrations')
+        .insert([{
+          announcement_id: announcementId,
+          supplier_id: user.id,
+          participate_online: participateOnline,
+          participate_offline: participateOffline,
+          use_same_products: useSameProducts,
+          offline_stock: offlineStock,
+          status: 'pending'
+        }])
+        .select()
+        .single()
 
       if (error) throw error
-      await fetchBazaarData()
-    } catch (error) {
-      console.error('Error saving bazaar data:', error)
-      Swal.fire('Error', 'Gagal menyimpan data bazaar', 'error')
-    }
-  }
 
-  const handleAdminDecision = async (name, accepted) => {
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ 
-          role: accepted ? 'admin' : 'supplier',
-          requested_admin: accepted ? 'false' : 'rejected'
+      const snapshots = []
+
+      if (useSameProducts) {
+        productsOnline.forEach(p => {
+          snapshots.push({
+            registration_id: reg.id,
+            channel: 'both',
+            nama_produk: p.nama_produk,
+            jenis_produk: p.jenis_produk,
+            ukuran: p.ukuran,
+            satuan: p.satuan,
+            hjk: p.hjk,
+            hpp: p.hpp,
+            image_url: p.image_url,
+            keterangan: p.keterangan
+          })
         })
-        .eq('name', name)
-
-      if (error) {
-        console.error('Error updating admin decision:', error)
-        Swal.fire('Error', 'Gagal memproses keputusan admin', 'error')
-        return
+      } else {
+        productsOnline.forEach(p => snapshots.push({ ...p, channel: 'online', registration_id: reg.id }))
+        productsOffline.forEach(p => snapshots.push({ ...p, channel: 'offline', registration_id: reg.id }))
       }
 
-      await fetchUsers()
+      const { error: prodErr } = await supabase
+        .from('registration_products')
+        .insert(snapshots)
 
-      if (user?.name === name) {
-        const updatedCurrent = registeredUsers.find(u => u.name === name)
-        if (updatedCurrent) {
-          const updatedUser = { 
-            ...updatedCurrent, 
-            role: accepted ? 'admin' : 'supplier',
-            requestedAdmin: accepted ? false : 'rejected'
-          }
-          setUser(updatedUser)
-          localStorage.setItem('currentUser', JSON.stringify(updatedUser))
-        }
-      }
+      if (prodErr) throw prodErr
 
-      Swal.fire('Berhasil', `Pengajuan admin ${accepted ? 'diterima' : 'ditolak'}`, 'success')
-    } catch (error) {
-      console.error('Error handling admin decision:', error)
-      Swal.fire('Error', 'Gagal memproses keputusan admin', 'error')
+      await fetchRegistrations()
+      Swal.fire('Berhasil', 'Registrasi berhasil', 'success')
+    } catch (e) {
+      console.error(e)
+      Swal.fire('Error', 'Gagal registrasi', 'error')
     }
   }
 
-  const cancelAdminRequest = async () => {
-    try {
-      const { error } = await supabase
-        .from('users')
-        .update({ requested_admin: 'false' })
-        .eq('name', user.name)
+  const createOrder = async ({
+    weekId,
+    announcementId,
+    registrationId,
+    registrationProductId,
+    channel,
+    pemesan,
+    jumlah,
+    hargaSatuan,
+    catatan,
+    bayar,
+    supplierId,
+    status,
+    method
+  }) => {
 
-      if (error) {
-        console.error('Error canceling admin request:', error)
-        Swal.fire('Error', 'Gagal membatalkan pengajuan admin', 'error')
-        return
-      }
+    const supId = supplierId || user?.id
+    const { error } = await supabase
+      .from('orders')
+      .insert([{
+        week_id: weekId,
+        announcement_id: announcementId,
+        registration_id: registrationId,
+        registration_product_id: registrationProductId,
+        supplier_id: supId,
+        channel,
+        pemesan,
+        jumlah,
+        harga_satuan: hargaSatuan,
+        catatan,
+        bayar,
+        status: status || null,
+        method: method || null
+      }])
 
-      const updatedCurrent = { ...user, requestedAdmin: false }
-      setUser(updatedCurrent)
-      localStorage.setItem('currentUser', JSON.stringify(updatedCurrent))
-
-      await fetchUsers()
-      Swal.fire('Berhasil', 'Pengajuan admin berhasil dibatalkan', 'success')
-    } catch (error) {
-      console.error('Error canceling admin request:', error)
-      Swal.fire('Error', 'Gagal membatalkan pengajuan admin', 'error')
+    if (error) {
+      Swal.fire('Error', 'Gagal menambah order', 'error')
+      return
     }
+
+    await fetchOrders()
   }
+
+  useEffect(() => {
+    const init = async () => {
+      await Promise.all([
+        fetchUsers(),
+        fetchProducts(),
+        fetchWeeks(),
+        fetchAnnouncements(),
+        fetchRegistrations(),
+        fetchOrders()
+      ])
+
+      const stored = localStorage.getItem('currentUser')
+      if (stored) setUser(JSON.parse(stored))
+
+      setLoading(false)
+    }
+
+    init()
+  }, [])
 
   return (
     <AuthContext.Provider value={{
       user,
+      users,
+      registeredUsers,
+      bazaarData,
+      weekData,
+      productData,
+      products,
+      weeks,
+      announcements,
+      registrations,
+      orders,
+      loading,
       login,
       logout,
-      applyAsAdmin,
       register,
-      loading,
-      registeredUsers,
-      profile,
-      saveProfile,
-      profileModalOpen,
-      toggleProfileModal,
-      productData,
-      saveProductData,
-      weekData,
-      saveWeekData,
-      bazaarData,
+      createRegistration,
+      createOrder,
       saveBazaarData,
-      userList,
-      handleAdminDecision,
-      cancelAdminRequest
+      logBazaarAction,
+      saveProductData,
+      profileModalOpen,
+      toggleProfileModal
     }}>
       {children}
     </AuthContext.Provider>
   )
-}
-
-export async function logBazaarAction({ user, action, target, targetId, dataBefore, dataAfter, description }) {
-  try {
-    await supabase.from('bazaar_logs').insert([{
-      user_name: user?.name,
-      action,
-      target,
-      target_id: targetId,
-      data_before: dataBefore ? JSON.stringify(dataBefore) : null,
-      data_after: dataAfter ? JSON.stringify(dataAfter) : null,
-      description
-    }])
-  } catch (e) {
-    console.error('Failed to log bazaar action', e)
-  }
-}
-
-export const logWeekAction = async ({ user, action, sheetName, entryBefore, entryAfter, description }) => {
-  try {
-    await supabase.from('week_logs').insert([{
-      user_name: user?.name,
-      action,
-      target: 'week_entry',
-      target_id: entryAfter?.id || `${sheetName}|${entryAfter?.pemesan}|${entryAfter?.produkLabel}`,
-      data_before: entryBefore ? JSON.stringify(entryBefore) : null,
-      data_after: entryAfter ? JSON.stringify(entryAfter) : null,
-      description,
-    }])
-  } catch (err) {
-    console.error('Error logging week action:', err)
-  }
 }

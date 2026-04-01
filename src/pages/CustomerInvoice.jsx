@@ -9,8 +9,7 @@ import Select from 'react-select'
 
 const CustomerInvoice = () => {
   const { num } = useParams()
-  const { weekData } = useAuth()
-  const sheetNames = num ? [`W${num}`] : Object.keys(weekData).filter(k => /^W\d+/.test(k))
+  const { orders, weeks, weekData } = useAuth()
   const [grouped, setGrouped] = useState([])
   const [searchText, setSearchText] = useState('')
   const [selectedPemesan, setSelectedPemesan] = useState(null)
@@ -22,29 +21,44 @@ const CustomerInvoice = () => {
   }
 
   useEffect(() => {
-    const raw = sheetNames.flatMap(name => weekData[name] || [])
-    const map = {}
+    const relevant = (orders || []).filter(o => o.channel === 'online')
+      .filter(o => {
+        if (!num) return true
+        const weekCode = weeks.find(w => w.id === o.week_id)?.week_code
+        return weekCode === `W${num}`
+      })
 
-    raw.forEach(row => {
-      const key = `${row.pemesan}|${row.produkLabel}|${row.keterangan}`
-      const qty = Number(row.jumlah)
-      const rawBayar = Number(row.bayar)
-      const adjustedBayar = rawBayar > 0 && rawBayar < 1000 ? rawBayar * 1000 : rawBayar
+    const map = {}
+    relevant.forEach(o => {
+      const prod = o.registration_products || {}
+      const label = `${prod.nama_produk || ''} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim()
+      const key = `${o.pemesan}|${label}|${o.catatan || ''}`
+      const qty = Number(o.jumlah)
+      const bayarRaw = Number(o.bayar)
+      const bayar = bayarRaw > 0 && bayarRaw < 1000 ? bayarRaw * 1000 : bayarRaw
+
+      const row = {
+        pemesan: o.pemesan,
+        produkLabel: label,
+        catatan: o.catatan || '',
+        jumlah: qty,
+        bayar,
+        week: weeks.find(w => w.id === o.week_id)?.week_code || ''
+      }
 
       if (!map[key]) {
-        map[key] = { ...row, jumlah: qty, bayar: adjustedBayar }
+        map[key] = { ...row }
       } else {
         map[key].jumlah += qty
-        map[key].bayar += adjustedBayar
+        map[key].bayar += bayar
       }
     })
 
     const arr = Object.values(map)
-
     const byPemesan = {}
     arr.forEach(r => {
-      if (!byPemesan[r?.pemesan]) byPemesan[r?.pemesan] = []
-      byPemesan[r?.pemesan].push(r)
+      if (!byPemesan[r.pemesan]) byPemesan[r.pemesan] = []
+      byPemesan[r.pemesan].push(r)
     })
 
     setGrouped(Object.entries(byPemesan).map(([pemesan, list], i) => {
@@ -52,7 +66,7 @@ const CustomerInvoice = () => {
       const totalHarga = list.reduce((a, b) => a + b.bayar, 0)
       return { id: i + 1, pemesan, items: list, totalQty, totalHarga }
     }).sort((a, b) => a.pemesan.toLowerCase().localeCompare(b.pemesan.toLowerCase())))
-  }, [weekData, sheetNames])
+  }, [orders, weeks, num])
 
   const sendInvoice = (pemesan, items, weekNum) => {
     const date = new Date()
@@ -322,7 +336,7 @@ const CustomerInvoice = () => {
             <h5>{group.pemesan}</h5>
           </CardHeader>
           <CardBody className="p-0">
-            <div className="overflow-auto" style={{ minHeight: 200 }}>
+            <div className="overflow-auto">
               <DataTable
                 columns={[
                   {

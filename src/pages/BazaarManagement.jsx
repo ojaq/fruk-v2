@@ -4,7 +4,7 @@ import Swal from 'sweetalert2'
 import DataTable from 'react-data-table-component'
 import { Edit, Trash2, Eye, Check, X, Download } from 'react-feather'
 import { useAuth } from '../context/AuthContext'
-import { logBazaarAction } from '../context/AuthContext'
+import { } from '../context/AuthContext'
 import Select from 'react-select'
 import moment from 'moment'
 import 'moment/locale/id'
@@ -450,6 +450,9 @@ const BazaarManagement = () => {
     {
       name: 'Jumlah Produk',
       selector: row => {
+        if (row?.registrationProducts && row.registrationProducts.length) {
+          return row.registrationProducts.filter(p => !p.isDeleted).length
+        }
         if (row?.selectedProductsOnline?.length || row?.selectedProductsOffline?.length) {
           let count = 0
           if (row?.selectedProductsOnline) count += row?.selectedProductsOnline.length
@@ -558,6 +561,7 @@ const BazaarManagement = () => {
         'Keterangan Produk',
         'Label Produk',
         'Gambar Produk',
+        'Offline Stock',
         'Catatan Supplier',
         'Catatan Admin'
       ]
@@ -593,51 +597,61 @@ const BazaarManagement = () => {
         }
         const pushProductRow = (product, partisipasi) => {
           if (!product) return
-          const d = product.data || {}
+          const d = product.data || product
+          const nama = d.namaProduk || d.nama_produk || d.label || ''
+          const jenis = d.jenisProduk || d.jenis_produk || ''
+          const ukuran = d.ukuran || ''
+          const satuan = d.satuan || ''
+          const hpp = d.hpp || d.hpp || ''
+          const hjk = d.hjk || d.hjk || ''
+          const keterangan = d.keterangan || d.keterangan || ''
+          const gambar = d.imageUrl || d.image_url || ''
+          const label = product.label || ''
+          const offlineStock = d.offline_stock != null ? d.offline_stock : ''
+
           const row = [
             regInfo[0], // Nama Supplier
             regInfo[1], // Bazaar
             regInfo[2], // Partisipasi Online
             regInfo[3], // Partisipasi Offline
             partisipasi, // Jenis Partisipasi
-            d.namaProduk || '',
-            d.jenisProduk || '',
-            d.ukuran || '',
-            d.satuan || '',
-            formatPrice(d.hpp),
-            formatPrice(d.hjk),
-            d.keterangan || '',
-            product.label || '',
-            d.imageUrl || '',
+            nama,
+            jenis,
+            ukuran,
+            satuan,
+            formatPrice(hpp),
+            formatPrice(hjk),
+            keterangan,
+            label,
+            gambar,
+            offlineStock,
             regTail[0], // Catatan Supplier
-            regTail[1]  // Catatan Admin
+            regTail[1] // Catatan Admin
           ]
-          csvRows.push(row?.map(escapeCSV).join(','))
+          csvRows.push(row.map(escapeCSV).join(','))
         }
+
         let hasProduct = false
-        if (registration?.selectedProductsOnline && registration?.selectedProductsOnline.length > 0) {
-          registration?.selectedProductsOnline.forEach(product => {
-            pushProductRow(product, 'Online')
+        if (registration?.registrationProducts && registration.registrationProducts.length > 0) {
+          registration.registrationProducts.forEach(p => {
+            const ch = (p.channel || '').toLowerCase()
+            const part = ch === 'offline' ? 'Offline' : ch === 'online' ? 'Online' : ch === 'both' ? 'Online & Offline' : ''
+            pushProductRow(p, part)
             hasProduct = true
           })
-        }
-        if (registration?.selectedProductsOffline && registration?.selectedProductsOffline.length > 0) {
-          registration?.selectedProductsOffline.forEach(product => {
-            pushProductRow(product, 'Offline')
-            hasProduct = true
-          })
-        }
-        if (!hasProduct && registration?.selectedProducts && registration?.selectedProducts.length > 0) {
-          registration?.selectedProducts.forEach(product => {
-            if (registration?.participateOnline) {
-              pushProductRow(product, 'Online')
-              hasProduct = true
-            }
-            if (registration?.participateOffline) {
-              pushProductRow(product, 'Offline')
-              hasProduct = true
-            }
-          })
+        } else {
+          if (registration?.selectedProductsOnline && registration?.selectedProductsOnline.length > 0) {
+            registration.selectedProductsOnline.forEach(product => { pushProductRow(product, 'Online'); hasProduct = true })
+          }
+          if (registration?.selectedProductsOffline && registration?.selectedProductsOffline.length > 0) {
+            registration.selectedProductsOffline.forEach(product => { pushProductRow(product, 'Offline'); hasProduct = true })
+          }
+          if (!hasProduct && registration?.selectedProducts && registration.selectedProducts.length > 0) {
+            registration.selectedProducts.forEach(product => {
+              if (registration?.participateOnline) { pushProductRow(product, 'Online'); hasProduct = true }
+              if (registration?.participateOffline) { pushProductRow(product, 'Offline'); hasProduct = true }
+            })
+          }
         }
         if (!hasProduct) {
           const emptyProduct = { data: {} }
@@ -670,9 +684,9 @@ const BazaarManagement = () => {
           <h4>Manajemen Pendaftaran Bazaar</h4>
         </Col>
         <Col xs="12" md="6" className="text-end mt-2 mt-md-0">
-          <Button className="me-3" color="info" onClick={handleCheckMissingRegistrations} disabled={checkingFix}>
+          {/* <Button className="me-3" color="info" onClick={handleCheckMissingRegistrations} disabled={checkingFix}>
             {checkingFix ? <Spinner size="sm" /> : '🔍 Cek Pendaftaran Hilang'}
-          </Button>
+          </Button> */}
           <Button className="me-3" color="success" onClick={handleExportCSV} disabled={loading}>
             <Download size={16} className="me-1" />
             Export CSV
@@ -888,8 +902,36 @@ const BazaarManagement = () => {
                     <Col xs="12">
                       <strong>Produk yang Didaftarkan:</strong><br />
                       <ul className="mt-1">
-                        {selectedRegistration?.selectedProductsOnline?.length || selectedRegistration?.selectedProductsOffline?.length
-                          ? <>
+                        {selectedRegistration?.registrationProducts && selectedRegistration.registrationProducts.length > 0 ? (
+                          (() => {
+                            const online = selectedRegistration.registrationProducts.filter(p => (p.channel || '').toLowerCase() === 'online')
+                            const offline = selectedRegistration.registrationProducts.filter(p => (p.channel || '').toLowerCase() === 'offline')
+                            const both = selectedRegistration.registrationProducts.filter(p => (p.channel || '').toLowerCase() === 'both')
+                            return (
+                              <>
+                                {online.length > 0 && <>
+                                  <li><strong>Online:</strong></li>
+                                  {online.map((product, index) => (
+                                    <li key={"on-" + (product.id || index)} style={{ marginLeft: 16 }}>{product.namaProduk || product.nama_produk || product.label}</li>
+                                  ))}
+                                </>}
+                                {offline.length > 0 && <>
+                                  <li><strong>Offline:</strong></li>
+                                  {offline.map((product, index) => (
+                                    <li key={"off-" + (product.id || index)} style={{ marginLeft: 16 }}>{product.namaProduk || product.nama_produk || product.label}{product.offline_stock != null ? ` — Stok: ${product.offline_stock}` : ''}</li>
+                                  ))}
+                                </>}
+                                {both.length > 0 && <>
+                                  <li><strong>Online & Offline:</strong></li>
+                                  {both.map((product, index) => (
+                                    <li key={"both-" + (product.id || index)} style={{ marginLeft: 16 }}>{product.namaProduk || product.nama_produk || product.label}{product.offline_stock != null ? ` — Stok offline: ${product.offline_stock}` : ''}</li>
+                                  ))}
+                                </>}
+                              </>
+                            )
+                          })()
+                        ) : (
+                          selectedRegistration?.selectedProductsOnline?.length || selectedRegistration?.selectedProductsOffline?.length ? <>
                             {selectedRegistration?.selectedProductsOnline?.length > 0 && <>
                               <li><strong>Online:</strong></li>
                               {selectedRegistration?.selectedProductsOnline.map((product, index) => (
@@ -902,10 +944,10 @@ const BazaarManagement = () => {
                                 <li key={"off-" + index} style={{ marginLeft: 16 }}>{product.label}</li>
                               ))}
                             </>}
-                          </>
-                          : selectedRegistration?.selectedProducts?.map((product, index) => (
+                          </> : selectedRegistration?.selectedProducts?.map((product, index) => (
                             <li key={index}>{product.label}</li>
-                          ))}
+                          ))
+                        )}
                       </ul>
                     </Col>
                   </Row>

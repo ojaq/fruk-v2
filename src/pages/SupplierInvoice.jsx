@@ -9,8 +9,7 @@ import Select from 'react-select'
 
 const SupplierInvoice = () => {
   const { num } = useParams()
-  const { weekData, productData, registeredUsers } = useAuth()
-  const sheetNames = num ? [`W${num}`] : Object.keys(weekData).filter(k => /^W\d+/.test(k))
+  const { orders, weeks, registeredUsers } = useAuth()
   const [grouped, setGrouped] = useState([])
   const [searchText, setSearchText] = useState('')
   const [selectedSupplier, setSelectedSupplier] = useState(null)
@@ -22,47 +21,41 @@ const SupplierInvoice = () => {
   }
 
   useEffect(() => {
-    const raw = sheetNames.flatMap(name => weekData[name] || [])
-    const supplierMap = {}
-
-    raw.forEach(row => {
-      const produkKey = row.produkLabel
-      const pemesan = row.pemesan
-      const jumlah = Number(row.jumlah)
-
-      let found = null
-      Object.entries(productData).forEach(([user, items]) => {
-        items.forEach(item => {
-          const label = `${item.namaProduk} ${item.ukuran} ${item.satuan}`.trim()
-          if (label.trim() === produkKey.trim() && item.aktif)
-            if (label === produkKey && item.aktif) {
-              found = {
-                supplier: item.namaSupplier || user,
-                produk: label,
-                hpp: Number(item.hpp),
-                key: label,
-                catatan: item.catatan
-              }
-            }
-        })
+    const relevant = (orders || [])
+      .filter(o => o.channel === 'online')
+      .filter(o => {
+        if (!num) return true
+        const weekCode = weeks.find(w => w.id === o.week_id)?.week_code
+        return weekCode === `W${num}`
       })
 
-      if (!found) return
+    const supplierMap = {}
 
-      const fullKey = `${found.supplier}|${found.key}|${row.catatan || ''}`
+    relevant.forEach(o => {
+      const supplierObj = registeredUsers.find(u => u.id === o.supplier_id) || {}
+      const supplierName =
+        supplierObj.namaSupplier || supplierObj.nama_supplier ||
+        supplierObj.name || 'unknown'
 
-      if (!supplierMap[fullKey]) {
-        supplierMap[fullKey] = {
-          namaSupplier: found.supplier,
-          produk: found.produk + (row.catatan ? ` (${row.catatan})` : ''),
+      const prod = o.registration_products || {}
+      const label = `${prod.nama_produk || ''} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim()
+      const jumlah = Number(o.jumlah)
+      const hpp = Number(prod.hpp || 0)
+      const key = `${supplierName}|${label}|${o.catatan || ''}`
+
+      if (!supplierMap[key]) {
+        supplierMap[key] = {
+          namaSupplier: supplierName,
+          produk: label + (o.catatan ? ` (${o.catatan})` : ''),
           pemesanList: {},
           jumlah: 0,
-          hpp: found.hpp
+          hpp
         }
       }
 
-      supplierMap[fullKey].jumlah += jumlah
-      supplierMap[fullKey].pemesanList[pemesan] = (supplierMap[fullKey].pemesanList[pemesan] || 0) + jumlah
+      supplierMap[key].jumlah += jumlah
+      supplierMap[key].pemesanList[o.pemesan] =
+        (supplierMap[key].pemesanList[o.pemesan] || 0) + jumlah
     })
 
     const bySupplier = {}
@@ -71,7 +64,7 @@ const SupplierInvoice = () => {
       const adjustedHPP = item.hpp < 1000 ? item.hpp * 1000 : item.hpp
       const entry = {
         ...item,
-        hpp: adjustedHPP,
+        hpp: item.hpp,
         total: item.jumlah * adjustedHPP,
         pemesanCombined: Object.entries(item.pemesanList)
           .map(([name, qty]) => `${name}(${qty})`).join(', ')
@@ -83,10 +76,7 @@ const SupplierInvoice = () => {
 
     const arr = Object.entries(bySupplier).map(([supplier, list], i) => {
       const totalQty = list.reduce((a, b) => a + b.jumlah, 0)
-      const totalHarga = list.reduce((a, b) => {
-        const adjusted = b.total < 1000 ? b.total * 1000 : b.total
-        return a + adjusted
-      }, 0)
+      const totalHarga = list.reduce((a, b) => a + b.total, 0)
       return {
         id: i + 1,
         supplier,
@@ -96,8 +86,10 @@ const SupplierInvoice = () => {
       }
     })
 
-    setGrouped(arr.sort((a, b) => a.supplier.toLowerCase().localeCompare(b.supplier.toLowerCase())))
-  }, [weekData, productData, sheetNames])
+    setGrouped(arr.sort((a, b) =>
+      a.supplier.toLowerCase().localeCompare(b.supplier.toLowerCase())
+    ))
+  }, [orders, weeks, num, registeredUsers])
 
   const sendInvoice = (supplier, items, weekNum) => {
     const date = new Date()
@@ -204,10 +196,10 @@ const SupplierInvoice = () => {
       doc.text(`Invoice untuk ${weekNum ? `minggu ke-${weekNum}` : 'semua minggu'}`, 15, finalY + 15)
 
       const matchedUser = registeredUsers.find(
-        u => u.profile?.namaSupplier?.trim().toLowerCase() === supplier.trim().toLowerCase()
+        u => u.namaSupplier?.trim().toLowerCase() === supplier.trim().toLowerCase()
       )
-      const paymentLine = matchedUser?.profile
-        ? `Pembayaran dapat dilakukan melalui:\n${matchedUser.profile.namaBank?.toUpperCase() || '-'} - ${matchedUser.profile.noRekening || '-'}\n${matchedUser.profile.namaPenerima || '-'}`
+      const paymentLine = matchedUser
+        ? `Pembayaran dapat dilakukan melalui:\n${(matchedUser.namaBank || '-').toUpperCase()} - ${matchedUser.noRekening || '-'}\n${matchedUser.namaPenerima || '-'}`
         : 'Pembayaran dapat dilakukan melalui:\n-'
 
       doc.text(paymentLine, 15, finalY + 25)
@@ -312,6 +304,17 @@ const SupplierInvoice = () => {
         }
       }
     })
+
+    const staticMatched = registeredUsers.find(
+      u => u.namaSupplier?.trim().toLowerCase() === supplier.trim().toLowerCase()
+    )
+    const staticPaymentLine = staticMatched
+      ? `Pembayaran dapat dilakukan melalui:\n${(staticMatched.namaBank || '-').toUpperCase()} - ${staticMatched.noRekening || '-'}\n${staticMatched.namaPenerima || '-'}`
+      : 'Pembayaran dapat dilakukan melalui:\n-'
+    const endY = doc.lastAutoTable?.finalY || 100
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'normal')
+    doc.text(staticPaymentLine, 15, endY + 10)
 
     doc.save(`Supplier-Invoice-${num ? `Minggu-${num}` : 'Semua-Minggu'}.pdf`)
   }

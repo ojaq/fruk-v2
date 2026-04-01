@@ -38,6 +38,8 @@ const MasterSupplier = () => {
   const uniqueNamaProduk = [...new Set(allProducts.map(d => d.namaProduk))].sort((a, b) => a.localeCompare(b))
   const uniqueJenisProduk = [...new Set(allProducts.map(d => d.jenisProduk))].sort((a, b) => a.localeCompare(b))
 
+  const [showNamaSuggestions, setShowNamaSuggestions] = useState(false)
+
   useEffect(() => {
     const all = []
     Object.entries(productData).forEach(([username, items]) => {
@@ -198,11 +200,14 @@ const MasterSupplier = () => {
     if (!result.isConfirmed) return
     setLoading(true)
     try {
-      const updatedList = [...(productData[row._owner] || [])]
-      updatedList.splice(row._index, 1)
-      await saveProductData(row._owner, updatedList)
+      const index = data.findIndex(p => p.id === row.id)
+      if (index === -1) throw new Error('Data tidak ditemukan')
+      const updated = [...data]
+      updated[index].isDeleted = true
+      await saveProductData(username, updated)
       Swal.fire('Dihapus!', `Produk "${row.namaProduk}" berhasil dihapus.`, 'success')
-    } catch (err) {
+    } catch (error) {
+      console.error('Error deleting product:', error)
       Swal.fire('Error', 'Gagal menghapus produk', 'error')
     } finally {
       setLoading(false)
@@ -260,7 +265,7 @@ const MasterSupplier = () => {
     { name: 'Bank', selector: row => row.namaBank || '-', wrap: true, width: "150px", },
     { name: 'Penerima', selector: row => row.namaPenerima || '-', wrap: true, width: "150px", },
     { name: 'No Rekening', selector: row => row.noRekening || '-', wrap: true, width: "150px", },
-    ...(user?.role === 'admin' || user?.role === 'superadmin' ? [
+    ...(user?.role === 'admin' || user?.role === 'dev' ? [
     {
       name: 'Aksi',
       cell: (row, i) => (
@@ -292,6 +297,10 @@ const MasterSupplier = () => {
     const matchesJenis = filterJenis ? item.jenisProduk === filterJenis.value : true
     return matchesSearch && matchesSupplier && matchesJenis
   })
+
+  const filteredNamaProduk = uniqueNamaProduk.filter(n =>
+    n.toLowerCase().includes((editForm?.namaProduk || '').toLowerCase())
+  )
 
   return (
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
@@ -366,10 +375,52 @@ const MasterSupplier = () => {
           <Row className="mb-2">
             <Col xs="12" sm="6" md="12" className="mb-2 mb-md-3">
               <Label>Nama Produk *</Label>
-              <Input value={editForm.namaProduk} onChange={e => setEditForm(f => ({ ...f, namaProduk: e.target.value }))} list="nama-produk-suggestions" />
-              <datalist id="nama-produk-suggestions">
-                {uniqueNamaProduk.map((n, i) => <option key={i} value={n} />)}
-              </datalist>
+              <div style={{ position: 'relative' }}>
+                <Input
+                  value={editForm.namaProduk}
+                  onChange={e => {
+                    setEditForm(f => ({ ...f, namaProduk: e.target.value }))
+                    setShowNamaSuggestions(true)
+                  }}
+                  onFocus={() => setShowNamaSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowNamaSuggestions(false), 150)}
+                  disabled={loading}
+                  placeholder="Masukkan nama produk"
+                />
+
+                {showNamaSuggestions &&
+                  editForm.namaProduk &&
+                  filteredNamaProduk.length > 0 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        width: '100%',
+                        background: '#fff',
+                        border: '1px solid #ddd',
+                        borderTop: 'none',
+                        zIndex: 1000,
+                        maxHeight: '200px',
+                        overflowY: 'auto'
+                      }}
+                    >
+                      {filteredNamaProduk.map((n, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            padding: '8px',
+                            cursor: 'pointer'
+                          }}
+                          onMouseDown={() => {
+                            setEditForm(f => ({ ...f, namaProduk: n }))
+                            setShowNamaSuggestions(false)
+                          }}
+                        >
+                          {n}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+              </div>
             </Col>
             <Col xs="12" sm="6" md="4" className="mb-2 mb-md-3">
               <Label>Jenis Produk *</Label>

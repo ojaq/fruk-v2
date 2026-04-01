@@ -1,19 +1,32 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Button, Input, Label, FormGroup, Form, FormFeedback, Card, CardBody, CardTitle, Container, Row, Col } from 'reactstrap'
+import {
+  Button,
+  Input,
+  Label,
+  FormGroup,
+  Form,
+  FormFeedback,
+  Card,
+  CardBody,
+  CardTitle,
+  Container,
+  Row,
+  Col
+} from 'reactstrap'
 
 const Register = () => {
-  const { register, userList } = useAuth()
+  const { register, users } = useAuth()
   const navigate = useNavigate()
   const [name, setName] = useState('')
-  const [role, setRole] = useState('supplier')
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
 
   const handleRegister = async (e) => {
     e.preventDefault()
     setLoading(true)
+    setError(null)
 
     try {
       const trimmed = name.trim()
@@ -23,16 +36,19 @@ const Register = () => {
         return
       }
 
-      const alreadyExists = userList.some(u => u.name.toLowerCase() === trimmed.toLowerCase())
-      if (alreadyExists) {
+      const exists = users.some(
+        u => u.name.toLowerCase() === trimmed.toLowerCase()
+      )
+
+      if (exists) {
         setError('Nama sudah digunakan')
         return
       }
 
-      await register(trimmed, role)
+      await register(trimmed)
       navigate('/login')
     } catch (err) {
-      setError(err.message)
+      setError(err.message || 'Gagal mendaftar')
     } finally {
       setLoading(false)
     }
@@ -43,18 +59,20 @@ const Register = () => {
       <Row>
         <Col>
           <div className="d-flex justify-content-center">
-            <img 
-              src="./logo.jpeg" 
+            <img
+              src="./logo.jpeg"
               alt="logo"
-              style={{ height: '200px', width: 'auto', marginBottom: '-30px' }}
+              style={{ height: '200px', marginBottom: '-30px' }}
             />
           </div>
           <Card style={{ minWidth: 350 }}>
             <CardBody>
-              <CardTitle tag="h3" className="mb-4 text-center">Register</CardTitle>
+              <CardTitle tag="h3" className="mb-4 text-center">
+                Register
+              </CardTitle>
               <Form onSubmit={handleRegister}>
                 <FormGroup>
-                  <Label>Nama</Label>
+                  <Label>Nama Supplier</Label>
                   <Input
                     value={name}
                     onChange={(e) => {
@@ -62,16 +80,10 @@ const Register = () => {
                       setError(null)
                     }}
                     invalid={!!error}
-                    placeholder="Nama pengguna"
+                    placeholder="Nama supplier"
                     disabled={loading}
                   />
                   {error && <FormFeedback>{error}</FormFeedback>}
-                </FormGroup>
-                <FormGroup>
-                  <Label>Role</Label>
-                  <Input type="select" value={role} disabled>
-                    <option value="supplier">Supplier</option>
-                  </Input>
                 </FormGroup>
                 <Button color="primary" type="submit" block disabled={loading}>
                   {loading ? 'Loading...' : 'Daftar'}

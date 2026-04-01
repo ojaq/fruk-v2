@@ -3,11 +3,15 @@ import { useAuth } from '../context/AuthContext'
 import { Button, Input, InputGroup, InputGroupText } from 'reactstrap'
 import { useNavigate } from 'react-router-dom'
 import Select from 'react-select'
-import { Instagram, Linkedin, Mail, Phone } from 'react-feather'
 
 const Dashboard = () => {
   const navigate = useNavigate()
-  const { user, applyAsAdmin, logout, profile, toggleProfileModal, registeredUsers, handleAdminDecision, cancelAdminRequest, bazaarData } = useAuth()
+  const { user, logout, toggleProfileModal, registeredUsers, bazaarData } = useAuth()
+
+  const isDev = user?.role === 'dev'
+  const isAdmin = user?.role === 'admin'
+  const isSupplier = user?.role === 'supplier'
+
   const [isProfileEmpty, setIsProfileEmpty] = useState(false)
   const [selectedSupplier, setSelectedSupplier] = useState(null)
 
@@ -16,7 +20,8 @@ const Dashboard = () => {
   })
 
   const [currentWeek, setCurrentWeek] = useState(() => {
-    return Number(localStorage.getItem('currentWeek')) || 1
+    const saved = Number(localStorage.getItem('currentWeek'))
+    return saved || null
   })
 
   const handleLogout = () => {
@@ -38,94 +43,110 @@ const Dashboard = () => {
     }
   }
 
-  const handleWeekly = () => {
-    navigate(`/week/${currentWeek}`)
-  }
+  const handleWeekly = () => navigate(`/week/${currentWeek}`)
+  const handleWeeklyOffline = () => navigate(`/weekoffline/${currentWeek}`)
+  const handleWeek = () => navigate(`/week`)
+  const handleWeeklyCustomerInvoice = () => navigate(`/customer-invoice/${currentWeek}`)
+  const handleWeeklySupplierInvoice = () => navigate(`/supplier-invoice/${currentWeek}`)
+  const handleCustomerInvoice = () => navigate(`/customer-invoice`)
+  const handleSupplierInvoice = () => navigate(`/supplier-invoice`)
+  const handleBazaarAnnouncement = () => navigate(`/bazaar-announcement`)
+  const handleBazaarRegistration = () => navigate(`/bazaar-registration`)
+  const handleBazaarManagement = () => navigate(`/bazaar-management`)
+  const handleBazaarCharts = () => navigate(`/bazaar-charts`)
 
-  const handleWeek = () => {
-    navigate(`/week`)
-  }
+  const isEmpty = (v) => !v || String(v).trim() === ''
 
-  const handleWeeklyCustomerInvoice = () => {
-    navigate(`/customer-invoice/${currentWeek}`)
-  }
-
-  const handleWeeklySupplierInvoice = () => {
-    navigate(`/supplier-invoice/${currentWeek}`)
-  }
-
-  const handleCustomerInvoice = () => {
-    navigate(`/customer-invoice`)
-  }
-
-  const handleSupplierInvoice = () => {
-    navigate(`/supplier-invoice`)
-  }
-
-  const handleBazaarAnnouncement = () => {
-    navigate(`/bazaar-announcement`)
-  }
-
-  const handleBazaarRegistration = () => {
-    navigate(`/bazaar-registration`)
-  }
-
-  const handleBazaarManagement = () => {
-    navigate(`/bazaar-management`)
-  }
-
-  const handleBazaarCharts = () => {
-    navigate(`/bazaar-charts`)
-  }
-
-  const checkProfileEmpty = (profileObj) => {
-    const { namaSupplier, namaBank, namaPenerima, noRekening } = profileObj || {}
-    return !namaSupplier?.trim() || !namaBank?.trim() || !namaPenerima?.trim() || !noRekening?.trim()
+  const checkProfileEmpty = (u) => {
+    return (
+      isEmpty(u.nama_supplier) ||
+      isEmpty(u.nama_bank) ||
+      isEmpty(u.no_rekening) ||
+      isEmpty(u.nama_penerima)
+    )
   }
 
   useEffect(() => {
-    if (user?.role === 'supplier') {
-      const empty = checkProfileEmpty(user.profile)
-      setIsProfileEmpty(empty)
-    }
+    if (!user) return
+    setIsProfileEmpty(checkProfileEmpty(user))
   }, [user])
 
-  const supplierOptions = registeredUsers
-    .filter(u => !['admin', 'supplier', 'superadmin'].includes(u.name.toLowerCase()))
+  const supplierOptions = (registeredUsers || [])
+    .filter(u => ['supplier', 'admin', 'dev'].includes(u.role))
     .map(u => ({
-      label: `${u.name}${u.profile?.namaSupplier ? ` (${u.profile.namaSupplier})` : ''}`,
+      label: `${u.name}${u.namaSupplier ? ` (${u.namaSupplier})` : ''}`,
       value: u.name
     }))
 
   const pendingRegistrations = (bazaarData?.registrations || []).filter(r => r?.status === 'pending').length
 
-  let needsRegistration = false
   let unregisteredAnnouncements = []
   let rejectedAnnouncements = []
-  if ((user.role === 'supplier') || (user.role === 'admin' && !adminView)) {
+  let pendingAnnouncements = []
+
+  if (isSupplier || (isAdmin && !adminView) || (isDev && !adminView)) {
     const now = new Date()
     const activeAnnouncements = (bazaarData?.announcements || []).filter(a => {
       if (a?.status !== 'active') return false
       if (!a.registrationDeadline) return true
-      return new Date(a.registrationDeadline) > now
+
+
+      const deadline = new Date(a.registrationDeadline)
+      deadline.setHours(23, 59, 59, 999)
+
+      return deadline >= now
     })
+
     const myRegs = (bazaarData?.registrations || []).filter(
-      r => r?.supplierName && r?.supplierName.trim().toLowerCase() === user.name.trim().toLowerCase()
+      r => r?.supplierId === user.id
     )
-    needsRegistration = activeAnnouncements.some(a => {
+
+    activeAnnouncements.forEach(a => {
       const reg = myRegs.find(r => r?.announcementId === a.id)
-      if (!reg) unregisteredAnnouncements.push(a)
-      else if (reg?.status === 'rejected') rejectedAnnouncements.push(a)
-      return !reg || reg?.status === 'rejected'
+
+      if (!reg) {
+        unregisteredAnnouncements.push(a)
+        return
+      }
+
+      if (reg.status === 'pending') {
+        pendingAnnouncements.push(a)
+        return
+      }
+
+      if (reg.status === 'rejected') {
+        rejectedAnnouncements.push(a)
+      }
     })
   }
+
+  const weekOptions = React.useMemo(() => {
+    const map = new Map()
+
+      ; (bazaarData?.announcements || []).forEach(a => {
+        if (!a.weekCode) return
+        if (a.is_deleted) return
+
+        const num = Number(a.weekCode.replace('W', ''))
+        if (!num) return
+
+        if (!map.has(num)) {
+          map.set(num, {
+            value: num,
+            label: `${a.title} – ${a.weekCode}`
+          })
+        }
+      })
+
+    return Array.from(map.values()).sort((a, b) => a.value - b.value)
+  }, [bazaarData])
 
   return (
     <div className="container mt-5" style={{ paddingBottom: '70px' }}>
       <h3>Halo, {user.name}</h3>
       <p>Role kamu sekarang: <strong>{user.role}</strong></p>
 
-      {user.role === 'admin' && (
+      {/* {(isAdmin || isDev) && (
         <div className="mb-4">
           <Button color="danger" onClick={() => navigate('/bazaar-logs')} className="me-2">
             Lihat Log Bazaar
@@ -134,36 +155,9 @@ const Dashboard = () => {
             Lihat Log Week
           </Button>
         </div>
-      )}
+      )} */}
 
-      {user.role === 'superadmin' && (
-        <>
-          <h5 className="mt-4">Permintaan Admin Baru</h5>
-          {registeredUsers.filter(u => u.requested_admin === 'true' && u.role === 'supplier').length === 0 ? (
-            <p className="text-muted">Tidak ada permintaan saat ini.</p>
-          ) : (
-            registeredUsers
-              .filter(u => u.role === 'supplier' && u.requested_admin === 'true')
-              .map((u, idx) => (
-                <div key={idx} className="mb-2 d-flex align-items-center justify-content-between border p-2 rounded">
-                  <div>
-                    <strong>{u.name}</strong> mengajukan sebagai admin.
-                  </div>
-                  <div>
-                    <Button color="success" className="me-2" onClick={() => handleAdminDecision(u.name, true)}>
-                      Terima
-                    </Button>
-                    <Button color="danger" onClick={() => handleAdminDecision(u.name, false)}>
-                      Tolak
-                    </Button>
-                  </div>
-                </div>
-              ))
-          )}
-        </>
-      )}
-
-      {(user.role === 'admin' && adminView) && (
+      {((isDev && adminView) || (isAdmin && adminView)) && (
         <>
           <p className="mt-4"><strong>🛠️ Panduan untuk Admin:</strong></p>
           <ul>
@@ -198,32 +192,49 @@ const Dashboard = () => {
                 </Button>
               </div>
             </li>
-            <li className="mb-2">Atur data dan masuk ke minggu: &nbsp;
-              <InputGroup size="sm" style={{ width: 150, display: 'inline-flex' }}>
-                <InputGroupText>Minggu</InputGroupText>
-                <Input
-                  type="text"
-                  pattern="\d*"
-                  inputMode="numeric"
-                  value={currentWeek}
-                  onChange={e => {
-                    const raw = e.target.value
-                    if (/^\d*$/.test(raw)) {
-                      setCurrentWeek(raw)
+            <li className="mb-2">Atur data dan masuk di bazaar <strong>online</strong>: &nbsp;
+              <div style={{ width: 260, display: 'inline-block' }}>
+                <Select
+                  options={weekOptions}
+                  placeholder="📅 Pilih Bazaar / Week"
+                  isClearable
+                  value={weekOptions.find(w => w.value === currentWeek) || null}
+                  onChange={(opt) => {
+                    if (!opt) {
+                      setCurrentWeek(null)
+                      localStorage.removeItem('currentWeek')
+                      return
                     }
-                  }}
-                  onBlur={() => {
-                    const parsed = Number(currentWeek)
-                    if (!parsed || parsed < 1) {
-                      setCurrentWeek(1)
-                      localStorage.setItem('currentWeek', 1)
-                    } else {
-                      localStorage.setItem('currentWeek', parsed)
-                    }
+
+                    setCurrentWeek(opt.value)
+                    localStorage.setItem('currentWeek', opt.value)
                   }}
                 />
-              </InputGroup>
+              </div>
               <Button color="primary" size="sm" className="ms-2" onClick={handleWeekly}>
+                Week {currentWeek}
+              </Button>
+            </li>
+            <li className="mb-2">Atur data dan masuk di bazaar <strong>offline</strong>: &nbsp;
+              <div style={{ width: 260, display: 'inline-block' }}>
+                <Select
+                  options={weekOptions}
+                  placeholder="📅 Pilih Bazaar / Week"
+                  isClearable
+                  value={weekOptions.find(w => w.value === currentWeek) || null}
+                  onChange={(opt) => {
+                    if (!opt) {
+                      setCurrentWeek(null)
+                      localStorage.removeItem('currentWeek')
+                      return
+                    }
+
+                    setCurrentWeek(opt.value)
+                    localStorage.setItem('currentWeek', opt.value)
+                  }}
+                />
+              </div>
+              <Button color="primary" size="sm" className="ms-2" onClick={handleWeeklyOffline}>
                 Week {currentWeek}
               </Button>
             </li>
@@ -279,7 +290,7 @@ const Dashboard = () => {
         </>
       )}
 
-      {((user.role === 'admin' && !adminView) || user.role === 'supplier') && (
+      {((isDev && !adminView) || (isAdmin && !adminView) || isSupplier) && (
         <>
           <p className="mt-4"><strong>📦 Panduan untuk Supplier:</strong></p>
           <ul>
@@ -310,30 +321,24 @@ const Dashboard = () => {
               </Button>
             </li>
             <li className="mb-2">Cek pesanan mingguan di <strong>Supplier Invoice</strong>. &nbsp;
-              <InputGroup size="sm" style={{ width: 150, display: 'inline-flex' }}>
-                <InputGroupText>Minggu</InputGroupText>
-                <Input
-                  type="text"
-                  pattern="\d*"
-                  inputMode="numeric"
-                  value={currentWeek}
-                  onChange={e => {
-                    const raw = e.target.value
-                    if (/^\d*$/.test(raw)) {
-                      setCurrentWeek(raw)
+              <div style={{ width: 260, display: 'inline-block' }}>
+                <Select
+                  options={weekOptions}
+                  placeholder="📅 Pilih Bazaar / Week"
+                  isClearable
+                  value={weekOptions.find(w => w.value === currentWeek) || null}
+                  onChange={(opt) => {
+                    if (!opt) {
+                      setCurrentWeek(null)
+                      localStorage.removeItem('currentWeek')
+                      return
                     }
-                  }}
-                  onBlur={() => {
-                    const parsed = Number(currentWeek)
-                    if (!parsed || parsed < 1) {
-                      setCurrentWeek(1)
-                      localStorage.setItem('currentWeek', 1)
-                    } else {
-                      localStorage.setItem('currentWeek', parsed)
-                    }
+
+                    setCurrentWeek(opt.value)
+                    localStorage.setItem('currentWeek', opt.value)
                   }}
                 />
-              </InputGroup>
+              </div>
               <Button color="primary" size="sm" className="ms-2" onClick={handleWeeklySupplierInvoice}>
                 Supplier Invoice Week {currentWeek}
               </Button>
@@ -352,7 +357,7 @@ const Dashboard = () => {
               <Button color="primary" size="sm" className="ms-2 position-relative" onClick={handleBazaarRegistration}>
                 Daftar Bazaar
               </Button>
-              {(unregisteredAnnouncements.length > 0 || rejectedAnnouncements.length > 0) && (
+              {(unregisteredAnnouncements.length > 0 || pendingAnnouncements.length > 0 || rejectedAnnouncements.length > 0) && (
                 <>
                   {unregisteredAnnouncements.length > 0 && (
                     <div className="badge bg-warning text-black py-2 px-3 ms-2">
@@ -372,59 +377,22 @@ const Dashboard = () => {
       )}
 
       <div className="mt-4">
-        {user.role === 'supplier' && user.requestedAdmin === true && (
-          <>
-            <Button color="warning" className="me-3" disabled>
-              ⏳ Menunggu persetujuan admin...
-            </Button>
-            <Button color="danger" onClick={cancelAdminRequest} className="me-3">
-              Batalkan
-            </Button>
-          </>
-        )}
-
-        {user.role === 'supplier' && user.requestedAdmin === 'rejected' && (
-          <>
-            <span className="text-danger me-3">❌ Pengajuan admin ditolak.</span>
-            <Button color="info" onClick={applyAsAdmin} className="me-3">
-              Ajukan Ulang
-            </Button>
-          </>
-        )}
-
-        {user.role === 'supplier' && !user.requestedAdmin && (
-          <Button color="primary" onClick={applyAsAdmin} className="me-3">
-            Ajukan sebagai Admin
+        {(isDev || isAdmin) && (
+          <Button
+            color="secondary"
+            onClick={() => {
+              setAdminView(prev => {
+                localStorage.setItem('adminView', String(!prev))
+                return !prev
+              })
+            }}
+            className="me-3"
+          >
+            Pindah ke Tampilan {adminView ? 'Supplier' : 'Admin'}
           </Button>
         )}
 
-        {user.role === 'admin' && (
-          <>
-            <Button
-              color="secondary"
-              onClick={() => {
-                setAdminView(prev => {
-                  localStorage.setItem('adminView', String(!prev))
-                  return !prev
-                })
-              }}
-              className="me-3"
-            >
-              Pindah ke Tampilan {adminView ? 'Supplier' : 'Admin'}
-            </Button>
-          </>
-        )}
-
         <Button color="danger" onClick={handleLogout}>Logout</Button>
-      </div>
-      <div style={{
-        position: 'fixed',
-        bottom: '15px',
-        right: '15px',
-        fontSize: '0.9rem',
-        color: '#888'
-      }}>
-        Made by Abdur Razzaq - <Phone size="18" color="#05b729ff" /> 082125970813 - <Instagram size="18" color="#b9359eff" /> & <Linkedin size="18" color="#2535e3ff" /> abangojaq - <Mail size="18" color="#bc1313ff" /> abangojaq@gmail.com
       </div>
     </div>
   )

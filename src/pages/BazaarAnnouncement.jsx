@@ -69,11 +69,13 @@ const BazaarAnnouncement = () => {
     deliveryDate: '',
     deliveryTime: '08:00',
     terms: '',
-    status: 'active'
+    status: 'active',
+    weekCode: ''
   })
 
-  const usedWeekNums = Object.keys(weekData || {})
-    .map(w => parseInt(w.replace('W', ''), 10))
+  const usedWeekNums = (announcements || [])
+    .filter(a => !a.isDeleted && a.weekCode)
+    .map(a => parseInt(a.weekCode.replace('W', ''), 10))
     .filter(n => !isNaN(n))
 
   let start = 1
@@ -83,14 +85,14 @@ const BazaarAnnouncement = () => {
   let num = start
   while (weekOptions.length < 10) {
     const weekId = `W${num}`
-    if (!usedWeekNums.includes(num) || weekId === form.weekId) {
+    if (!usedWeekNums.includes(num) || weekId === form.weekCode) {
       weekOptions.push({ label: weekId, value: weekId })
     }
     num++
   }
 
-  if (form.weekId && !weekOptions.some(o => o.value === form.weekId)) {
-    weekOptions.unshift({ label: form.weekId, value: form.weekId })
+  if (form.weekCode && !weekOptions.some(o => o.value === form.weekCode)) {
+    weekOptions.unshift({ label: form.weekCode, value: form.weekCode })
   }
 
   useEffect(() => {
@@ -102,8 +104,8 @@ const BazaarAnnouncement = () => {
   const handleSave = async () => {
     setLoading(true)
     try {
-      const { title, greeting, description, onlineDateStart, onlineDateEnd, offlineDate, maxSuppliersOnline, maxSuppliersOffline, maxProductsPerSupplier, registrationDeadline, deliveryDate, deliveryTime, terms, status, weekId } = form
-      if (!title || !description || !onlineDateStart || !onlineDateEnd || !offlineDate || !registrationDeadline || !deliveryDate || !weekId) {
+      const { title, greeting, description, onlineDateStart, onlineDateEnd, offlineDate, maxSuppliersOnline, maxSuppliersOffline, maxProductsPerSupplier, registrationDeadline, deliveryDate, deliveryTime, terms, status, weekCode } = form
+      if (!title || !description || !onlineDateStart || !onlineDateEnd || !offlineDate || !registrationDeadline || !deliveryDate || !weekCode) {
         Swal.fire('Error', 'Semua field wajib diisi!', 'error')
         setLoading(false)
         return
@@ -140,7 +142,7 @@ const BazaarAnnouncement = () => {
       }
 
       const newAnnouncement = {
-        id: editIndex !== null ? editingAnnouncement?.id || announcements[editIndex].id : Date.now().toString(),
+        ...(editIndex !== null && editingAnnouncement?.id ? { id: editingAnnouncement.id } : {}),
         title,
         greeting,
         description,
@@ -155,8 +157,8 @@ const BazaarAnnouncement = () => {
         deliveryTime,
         terms,
         status,
-        weekId,
-        createdAt: editIndex !== null ? (editingAnnouncement?.createdAt || announcements[editIndex].createdAt) : new Date().toISOString(),
+        weekCode,
+        createdAt: editIndex !== null ? editingAnnouncement?.createdAt : new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         createdBy: user.name
       }
@@ -205,10 +207,11 @@ const BazaarAnnouncement = () => {
   const handleEdit = (row, index) => {
     setForm({
       ...row,
-      weekId: row.weekId || row.week || '',
+      weekCode: row.weekCode || '',
       onlineDateStart: row.onlineDateStart || row.onlineDate || '',
       onlineDateEnd: row.onlineDateEnd || row.onlineDate || '',
       offlineDate: row.offlineDate || '',
+      registrationDeadline: row.registrationDeadline ? row.registrationDeadline.slice(0, 16) : ''
     })
     setEditIndex(index)
     setEditingAnnouncement(row)
@@ -468,8 +471,8 @@ ${announcement.terms ? `\nSyarat dan Ketentuan:\n${announcement.terms}` : ''}`
                 <Label>Week *</Label>
                 <Input
                   type="select"
-                  value={form.weekId || ''}
-                  onChange={e => setForm({ ...form, weekId: e.target.value })}
+                  value={form.weekCode || ''}
+                  onChange={e => setForm({ ...form, weekCode: e.target.value })}
                   disabled={loading}
                 >
                   <option value="">Pilih Week</option>
@@ -667,7 +670,7 @@ ${announcement.terms ? `\nSyarat dan Ketentuan:\n${announcement.terms}` : ''}`
             <div>
               <Card className="mb-3">
                 <CardHeader>
-                  <h5>{selectedAnnouncement.title}</h5>
+                  <h5>{selectedAnnouncement.title} - {selectedAnnouncement.weekCode || '-'}</h5>
                   <div className="d-flex justify-content-between align-items-center">
                     <small className="text-muted">
                       Dibuat oleh: {selectedAnnouncement.createdBy}

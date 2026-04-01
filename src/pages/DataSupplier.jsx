@@ -40,7 +40,7 @@ const DataSupplier = () => {
   const username = targetUser || user?.name || ''
   const targetUserData = registeredUsers.find(u => u.name === username)
 
-  const canEdit = user?.role === 'admin' || user?.role === 'superadmin' || username === user?.name
+  const canEdit = user?.role === 'admin' || user?.role === 'dev' || username === user?.name
   const isViewingOwnData = username === user?.name
 
   const [editIndex, setEditIndex] = useState(null)
@@ -50,6 +50,8 @@ const DataSupplier = () => {
   const data = (productData[username] || []).slice().sort((a, b) => (a.namaProduk || '').toLowerCase().localeCompare((b.namaProduk || '').toLowerCase()))
 
   const uniqueNamaProduk = [...new Set(data.map(d => d.namaProduk))].sort((a, b) => a.localeCompare(b))
+
+  const [showNamaSuggestions, setShowNamaSuggestions] = useState(false)
 
   const handleSave = async () => {
     setLoading(true)
@@ -193,20 +195,11 @@ const DataSupplier = () => {
 
     setLoading(true)
     try {
-      const actualIndex = data.findIndex(item =>
-        item.namaProduk === row.namaProduk &&
-        item.jenisProduk === row.jenisProduk &&
-        item.ukuran === row.ukuran &&
-        item.satuan === row.satuan
-      )
-
-      if (actualIndex === -1) {
-        Swal.fire('Error', 'Data tidak ditemukan', 'error')
-        return
-      }
+      const index = data.findIndex(p => p.id === row.id)
+      if (index === -1) throw new Error('Data tidak ditemukan')
 
       const updated = [...data]
-      updated.splice(actualIndex, 1)
+      updated[index].isDeleted = true
       await saveProductData(username, updated)
       Swal.fire('Dihapus!', `Produk "${row.namaProduk}" berhasil dihapus.`, 'success')
     } catch (error) {
@@ -262,20 +255,6 @@ const DataSupplier = () => {
     }
   }
 
-  const toggleAllAktif = async (status) => {
-    setLoading(true)
-    try {
-      const updated = data.map(item => ({ ...item, aktif: status }))
-      await saveProductData(username, updated)
-      Swal.fire('Berhasil', `Semua produk berhasil di-${status ? 'aktifkan' : 'nonaktifkan'}`, 'success')
-    } catch (error) {
-      console.error('Error toggling all products:', error)
-      Swal.fire('Error', 'Gagal mengubah status semua produk', 'error')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const columns = [
     {
       name: 'No',
@@ -287,14 +266,12 @@ const DataSupplier = () => {
       name: 'Nama Produk',
       selector: row => row.namaProduk,
       sortable: true,
-      width: "350px",
       wrap: true
     },
     {
       name: 'Detail Produk',
       selector: row => {return `${row.jenisProduk} ${row.ukuran} ${row.satuan}`},
       sortable: true,
-      width: "200px",
       wrap: true
     },
     {
@@ -377,6 +354,69 @@ const DataSupplier = () => {
     )
   )
 
+  const filteredNamaProduk = uniqueNamaProduk.filter(n =>
+    n.toLowerCase().includes(form.namaProduk.toLowerCase())
+  )
+
+  const allActive = filteredData.length > 0 && filteredData.every(p => p.aktif)
+  const allInactive = filteredData.length > 0 && filteredData.every(p => !p.aktif)
+
+  const toggleAllAktif = async (status) => {
+    const affected = filteredData.filter(item => item.aktif !== status)
+    if (affected.length === 0) return
+    const htmlList = affected.map((item, i) => `
+      <div style="text-align:left;margin-bottom:6px;">
+        <input type="checkbox" id="prod-${i}" data-index="${data.findIndex(d => d === item)}" checked />
+        <label for="prod-${i}">
+          ${item.namaProduk} (${item.jenisProduk} ${item.ukuran} ${item.satuan})
+        </label>
+      </div>
+    `).join('')
+
+    const result = await Swal.fire({
+      title: status ? 'Aktifkan Produk' : 'Nonaktifkan Produk',
+      html: `
+        <div style="max-height:300px;overflow:auto;">
+          ${htmlList}
+        </div>
+      `,
+      width: 600,
+      showCancelButton: true,
+      confirmButtonText: 'Lanjutkan',
+      cancelButtonText: 'Batal',
+      preConfirm: () => {
+        const checkboxes = Swal.getPopup().querySelectorAll('input[type="checkbox"]')
+        const selectedIndexes = []
+        checkboxes.forEach(cb => {
+          if (cb.checked) {
+            selectedIndexes.push(parseInt(cb.dataset.index))
+          }
+        })
+        return selectedIndexes
+      }
+    })
+
+    if (!result.isConfirmed || result.value.length === 0) return
+    setLoading(true)
+    try {
+      const updated = [...data]
+      result.value.forEach(index => {
+        updated[index].aktif = status
+      })
+      await saveProductData(username, updated)
+      Swal.fire(
+        'Berhasil',
+        `${result.value.length} produk berhasil di-${status ? 'aktifkan' : 'nonaktifkan'}`,
+        'success'
+      )
+    } catch (error) {
+      console.error(error)
+      Swal.fire('Error', 'Gagal mengubah status', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
       <h4>Data Supplier ({targetUserData?.profile?.namaSupplier || username})</h4>
@@ -401,10 +441,10 @@ const DataSupplier = () => {
                 <Button type="submit" color="primary" className="me-2" disabled={loading} onClick={handleAdd}>
                   Tambah Produk
                 </Button>
-                <Button color="success" className="me-2" onClick={() => toggleAllAktif(true)} disabled={loading || (filteredData == 0)}>
+                <Button color="success" className="me-2" onClick={() => toggleAllAktif(true)} disabled={loading || filteredData.length === 0 || allActive}>
                   Aktifkan Semua
                 </Button>
-                <Button color="danger" className="me-2" onClick={() => toggleAllAktif(false)} disabled={loading || (filteredData == 0)}>
+                <Button color="danger" className="me-2" onClick={() => toggleAllAktif(false)} disabled={loading || filteredData.length === 0 || allInactive}>
                   Nonaktifkan Semua
                 </Button>
               </>
@@ -438,10 +478,52 @@ const DataSupplier = () => {
           <Row className="mb-2">
             <Col xs="12" sm="6" md="12" className="mb-2 mb-md-3">
               <Label>Nama Produk *</Label>
-              <Input value={form.namaProduk} onChange={e => setForm({ ...form, namaProduk: e.target.value })} disabled={loading} list="nama-produk-suggestions" />
-              <datalist id="nama-produk-suggestions">
-                {uniqueNamaProduk.map((n, i) => <option key={i} value={n} />)}
-              </datalist>
+              <div style={{ position: 'relative' }}>
+                <Input
+                  value={form.namaProduk}
+                  onChange={e => {
+                    setForm({ ...form, namaProduk: e.target.value })
+                    setShowNamaSuggestions(true)
+                  }}
+                  onFocus={() => setShowNamaSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowNamaSuggestions(false), 150)}
+                  disabled={loading}
+                  placeholder="Masukkan nama produk"
+                />
+
+                {showNamaSuggestions &&
+                  form.namaProduk &&
+                  filteredNamaProduk.length > 0 && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        width: '100%',
+                        background: '#fff',
+                        border: '1px solid #ddd',
+                        borderTop: 'none',
+                        zIndex: 1000,
+                        maxHeight: '200px',
+                        overflowY: 'auto'
+                      }}
+                    >
+                      {filteredNamaProduk.map((n, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            padding: '8px',
+                            cursor: 'pointer'
+                          }}
+                          onMouseDown={() => {
+                            setForm({ ...form, namaProduk: n })
+                            setShowNamaSuggestions(false)
+                          }}
+                        >
+                          {n}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+              </div>
             </Col>
             <Col xs="12" sm="6" md="4" className="mb-2 mb-md-3">
               <Label>Jenis Produk *</Label>

@@ -4,6 +4,7 @@ import Login from '../pages/Login'
 import Register from '../pages/Register'
 import Dashboard from '../pages/Dashboard'
 import Week from '../pages/Week'
+import WeekOffline from '../pages/WeekOffline'
 import CustomerInvoice from '../pages/CustomerInvoice'
 import SupplierInvoice from '../pages/SupplierInvoice'
 import MasterSupplier from '../pages/MasterSupplier'
@@ -55,6 +56,14 @@ const AppRoutes = () => {
         element={
           <PrivateRoutes>
             <Week />
+          </PrivateRoutes>
+        }
+      />
+      <Route
+        path="/weekoffline/:num?"
+        element={
+          <PrivateRoutes>
+            <WeekOffline />
           </PrivateRoutes>
         }
       />

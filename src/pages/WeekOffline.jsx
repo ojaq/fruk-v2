@@ -8,13 +8,13 @@ import { useAuth } from '../context/AuthContext'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 
-const Week = () => {
+const WeekOffline = () => {
   const { productData, registeredUsers, bazaarData, user, createOrder, weeks, orders } = useAuth()
   const { num } = useParams()
   const sheetName = `W${num}`
 
   const [form, setForm] = useState({
-    pemesan: '', produkLabel: null, catatan: '', jumlah: '', bayar: ''
+    pemesan: '', produkLabel: null, catatan: '', jumlah: '', bayar: '', method: '', status: ''
   })
   const [data, setData] = useState([])
   const [editIndex, setEditIndex] = useState(null)
@@ -24,7 +24,6 @@ const Week = () => {
   const [selectedPemesan, setSelectedPemesan] = useState(null)
   const [loading, setLoading] = useState(false)
   const [selectedWeek, setSelectedWeek] = useState(null)
-  const [selectedChannel, setSelectedChannel] = useState(null)
   const [selectedStatus, setSelectedStatus] = useState(null)
   const [selectedMethod, setSelectedMethod] = useState(null)
   const [fixModalOpen, setFixModalOpen] = useState(false)
@@ -42,13 +41,13 @@ const Week = () => {
   const approvedRegs = (bazaarData.registrations || []).filter(r => r?.announcementId === currentAnnouncement?.id && r?.status === 'approved')
   const allowedProducts = []
   approvedRegs.forEach(reg => {
-    if (reg.participateOnline) {
-      const onlineProducts = (reg.registrationProducts || []).filter(p => {
+    if (reg.participateOffline) {
+      const offlineProducts = (reg.registrationProducts || []).filter(p => {
         const ch = (p.channel || '').toLowerCase()
-        return (ch === 'online' || ch === 'both') && !p.isDeleted
+        return (ch === 'offline' || ch === 'both') && !p.isDeleted
       })
-      if (onlineProducts.length) {
-        onlineProducts.forEach(prod => {
+      if (offlineProducts.length) {
+        offlineProducts.forEach(prod => {
           allowedProducts.push({
             ...prod,
             owner: reg.supplierName,
@@ -71,21 +70,21 @@ const Week = () => {
       registrationProductId: prod.id,
       registrationId: o.registration_id,
       supplierId: o.supplier_id,
-      week: weekCode,
-      channel: o.channel
+      week: weekCode
     }
   }
 
   useEffect(() => {
     if (isAllWeek) {
       const sorted = (orders || [])
+        .filter(o => o.channel === 'offline')
         .map(mapOrderRow)
         .sort((a, b) => (a.pemesan || '').toLowerCase().localeCompare((b.pemesan || '').toLowerCase()))
       setData(sorted)
     } else {
       const weekId = weeks.find(w => w.week_code === sheetName)?.id
       const filtered = (orders || [])
-        .filter(o => o.week_id === weekId && o.channel === 'online')
+        .filter(o => o.week_id === weekId && o.channel === 'offline')
         .map(mapOrderRow)
         .sort((a, b) => (a.pemesan || '').toLowerCase().localeCompare((b.pemesan || '').toLowerCase()))
       setData(filtered)
@@ -165,8 +164,8 @@ const Week = () => {
     setLoading(true)
 
     try {
-      const { pemesan, produkLabel, jumlah } = form
-      if (!pemesan || !produkLabel || !jumlah) {
+      const { pemesan, produkLabel, jumlah, method } = form
+      if (!pemesan || !produkLabel || !jumlah || (form.status === 'lunas' && !method)) {
         Swal.fire('Gagal', 'Semua field * wajib diisi', 'error')
         return
       }
@@ -192,7 +191,9 @@ const Week = () => {
             jumlah: Number(jumlah),
             harga_satuan: produkLabel.data.hjk,
             catatan: form.catatan || null,
-            bayar: parseFloat(form.bayar) || null
+            bayar: parseFloat(form.bayar) || null,
+            method: form.method,
+            status: form.status
           })
           .eq('id', editingOrderId)
         if (error) throw error
@@ -203,7 +204,9 @@ const Week = () => {
           pemesan,
           jumlah: Number(jumlah),
           bayar: parseFloat(form.bayar) || null,
-          catatan: form.catatan || ''
+          catatan: form.catatan || '',
+          method: form.method,
+          status: form.status
         } : r))
 
         Swal.fire('Berhasil', 'Order berhasil diperbarui', 'success')
@@ -213,19 +216,20 @@ const Week = () => {
           announcementId: currentAnnouncement.id,
           registrationId: produkLabel.registrationId,
           registrationProductId: produkLabel.registrationProductId,
-          channel: 'online',
+          channel: 'offline',
           pemesan,
           jumlah: Number(jumlah),
           hargaSatuan: produkLabel.data.hjk,
           catatan: form.catatan || null,
           bayar: parseFloat(form.bayar) || null,
           supplierId: produkLabel.supplierId || undefined,
-          status: 'online'
+          method: form.method,
+          status: form.status
         })
         Swal.fire('Berhasil', 'Order berhasil ditambahkan', 'success')
       }
 
-      setForm({ pemesan: '', produkLabel: null, catatan: '', jumlah: '', bayar: '' })
+      setForm({ pemesan: '', produkLabel: null, catatan: '', jumlah: '', bayar: '', method: null, status: null })
       setEditIndex(null)
       setEditingOrderId(null)
     } catch (error) {
@@ -237,10 +241,8 @@ const Week = () => {
   }
 
   const handleEdit = (row, i) => {
-
     let opt = produkOptions.find(o => o.registrationProductId === row.registrationProductId)
     if (!opt) {
-
       opt = {
         label: row.produkLabel || '',
         value: row.registrationProductId || '',
@@ -263,6 +265,8 @@ const Week = () => {
       catatan: row.catatan,
       jumlah: row.jumlah,
       bayar: row.bayar,
+      method: row.method,
+      status: row.status || '',
       adjustedHJK: opt ? getAdjustedHJK(opt.data.hjk) : 0
     })
     setEditIndex(i)
@@ -431,8 +435,6 @@ const Week = () => {
   }
 
 
-  const showStatusMethod = isAllWeek && (!selectedChannel || selectedChannel.value === 'offline')
-
   const columns = [
     { name: 'No', selector: (r, i) => i + 1, width: '60px', wrap: true },
     ...(isAllWeek ? [{ name: 'Minggu', selector: r => r?.week, wrap: true }] : []),
@@ -449,20 +451,6 @@ const Week = () => {
         return `Rp${adjustedValue.toLocaleString('id-ID', { maximumFractionDigits: 0 })}`
       },
       width: "140px",
-      wrap: true
-    },
-    {
-      name: 'Channel',
-      cell: (row) => {
-        if (!row.channel) return '-'
-        const map = {
-          online: { color: 'primary', label: 'Online' },
-          offline: { color: 'info', label: 'Offline' }
-        }
-        const config = map[row.channel] || { color: 'secondary', label: row.channel }
-        return <Badge color={config.color}>{config.label}</Badge>
-      },
-      width: "120px",
       wrap: true
     },
     {
@@ -516,10 +504,9 @@ const Week = () => {
     )
     const matchPemesan = selectedPemesan ? row.pemesan === selectedPemesan.value : true
     const matchWeek = selectedWeek ? row.week === selectedWeek.value : true
-    const matchChannel = isAllWeek && selectedChannel ? row.channel === selectedChannel.value : true
-    const matchStatus = showStatusMethod && selectedStatus ? row.status === selectedStatus.value : true
-    const matchMethod = showStatusMethod && selectedMethod ? row.method === selectedMethod.value : true
-    return matchSearch && matchPemesan && matchWeek && matchChannel && matchStatus && matchMethod
+    const matchStatus = isAllWeek && selectedStatus ? row.status === selectedStatus.value : true
+    const matchMethod = selectedMethod ? row.method === selectedMethod.value : true
+    return matchSearch && matchPemesan && matchWeek && matchStatus && matchMethod
   })
 
   const uniquePemesanOptions = [...new Set(data.map(d => d.pemesan))].map(p => ({
@@ -548,7 +535,7 @@ const Week = () => {
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
       <Row className="mb-2">
         <Col xs="12" md="6">
-          <h4>{isAllWeek ? 'Semua Minggu' : `Minggu ${num}`}</h4>
+          <h4>{isAllWeek ? 'Semua Minggu' : `Minggu ${num} Offline`}</h4>
         </Col>
         <Col xs="12" md="6" className="text-end mt-2 mt-md-0">
           {/* <Button color="info" onClick={handleCheckMissingEntries} disabled={loading} className="me-3">
@@ -579,7 +566,7 @@ const Week = () => {
               )}
             </FormGroup>
           </Col>
-          <Col xs="12" sm="6" md="3" className="mb-2 mb-md-0">
+          <Col xs="12" sm="6" md="2" className="mb-2 mb-md-0">
             <FormGroup>
               <Label>Produk *</Label>
               <Select
@@ -597,7 +584,7 @@ const Week = () => {
               )}
             </FormGroup>
           </Col>
-          <Col xs="12" sm="6" md="3" className="mb-2 mb-md-0">
+          <Col xs="12" sm="6" md="2" className="mb-2 mb-md-0">
             <FormGroup>
               <Label>Catatan/Varian</Label>
               <Input
@@ -607,6 +594,38 @@ const Week = () => {
               />
             </FormGroup>
           </Col>
+          <Col xs="12" sm="6" md="2" className="mb-2 mb-md-0">
+            <FormGroup>
+              <Label>Status *</Label>
+              <Select
+                options={statusOptions}
+                value={statusOptions.find(o => o.value === form.status || null)}
+                onChange={(option) => {
+                  setForm(f => ({
+                    ...f,
+                    status: option ? option.value : '',
+                    method: option?.value === 'lunas' ? f.method : null
+                  }))
+                }}
+                placeholder="🔽 Pilih status"
+                isDisabled={loading || isAllWeek}
+              />
+            </FormGroup>
+          </Col>
+          {form.status === 'lunas' && (
+            <Col xs="12" sm="6" md="2" className="mb-2 mb-md-0">
+              <FormGroup>
+                <Label>Method *</Label>
+                <Select
+                  options={methodOptions}
+                  value={methodOptions.find(o => o.value === form.method) || null}
+                  onChange={(option) => setForm(f => ({ ...f, method: option ? option.value : '' }))}
+                  placeholder="🔽 Pilih method"
+                  isDisabled={loading || isAllWeek}
+                />
+              </FormGroup>
+            </Col>
+          )}
           <Col xs="6" sm="3" md="1" className="mb-2 mb-md-0">
             <FormGroup>
               <Label>Jumlah *</Label>
@@ -634,7 +653,7 @@ const Week = () => {
           </Col>
         </Row>
         <Row className="mb-3">
-          <Col xs="12" md={isAllWeek ? "2" : "4"} className="mb-2 mb-md-0">
+          <Col xs="12" md={isAllWeek ? "2" : "3"} className="mb-2 mb-md-0">
             <Input
               placeholder="🔍 Cari apa aja..."
               value={searchText}
@@ -642,7 +661,7 @@ const Week = () => {
               disabled={loading}
             />
           </Col>
-          <Col xs="12" md={isAllWeek ? "2" : "4"} className="mb-2 mb-md-0">
+          <Col xs="12" md={isAllWeek ? "2" : "3"} className="mb-2 mb-md-0">
             <Select
               options={uniquePemesanOptions}
               isClearable
@@ -653,6 +672,19 @@ const Week = () => {
               isDisabled={loading}
             />
           </Col>
+          {!isAllWeek && (
+            <Col xs="12" md="3" className="mb-2 mb-md-0">
+              <Select
+                options={methodOptions}
+                isClearable
+                isSearchable
+                placeholder="🔽 Filter method"
+                value={selectedMethod}
+                onChange={setSelectedMethod}
+                isDisabled={loading}
+              />
+            </Col>
+          )}
           {isAllWeek && (
             <>
               <Col xs="12" md="2" className="mb-2 mb-md-0">
@@ -668,52 +700,33 @@ const Week = () => {
               </Col>
               <Col xs="12" md="2" className="mb-2 mb-md-0">
                 <Select
-                  options={[
-                    { label: 'Online', value: 'online' },
-                    { label: 'Offline', value: 'offline' }
-                  ]}
+                  options={statusOptions}
                   isClearable
                   isSearchable
-                  placeholder="🔽 Filter channel"
-                  value={selectedChannel}
-                  onChange={setSelectedChannel}
+                  placeholder="🔽 Filter status"
+                  value={selectedStatus}
+                  onChange={setSelectedStatus}
                   isDisabled={loading}
                 />
               </Col>
-              {(!selectedChannel || selectedChannel.value === 'offline') && (
-                <>
-                  <Col xs="12" md="2" className="mb-2 mb-md-0">
-                    <Select
-                      options={statusOptions}
-                      isClearable
-                      isSearchable
-                      placeholder="🔽 Filter status"
-                      value={selectedStatus}
-                      onChange={setSelectedStatus}
-                      isDisabled={loading}
-                    />
-                  </Col>
-                  <Col xs="12" md="2" className="mb-2 mb-md-0">
-                    <Select
-                      options={methodOptions}
-                      isClearable
-                      isSearchable
-                      placeholder="🔽 Filter method"
-                      value={selectedMethod}
-                      onChange={setSelectedMethod}
-                      isDisabled={loading}
-                    />
-                  </Col>
-                </>
-              )}
+              <Col xs="12" md="2" className="mb-2 mb-md-0">
+                <Select
+                  options={methodOptions}
+                  isClearable
+                  isSearchable
+                  placeholder="🔽 Filter method"
+                  value={selectedMethod}
+                  onChange={setSelectedMethod}
+                  isDisabled={loading}
+                />
+              </Col>
             </>
           )}
-          <Col xs="12" md={isAllWeek ? "2" : "4"} className="text-end">
+          <Col xs="12" md={isAllWeek ? "2" : "3"} className="text-end">
             <Button color="danger" className="me-3 mb-2 mb-md-0" onClick={() => {
               setSearchText('')
               setSelectedPemesan(null)
               setSelectedWeek(null)
-              setSelectedChannel(null)
               setSelectedStatus(null)
               setSelectedMethod(null)
             }} disabled={loading}>
@@ -837,4 +850,4 @@ const Week = () => {
   )
 }
 
-export default Week
+export default WeekOffline
