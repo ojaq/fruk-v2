@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import {
   Badge,
   Button,
@@ -47,18 +47,25 @@ const Week = () => {
     ? [...new Set((data || []).map(d => d.pemesan))].sort((a, b) => a.localeCompare(b))
     : []
 
-  const currentAnnouncement = (bazaarData.announcements || []).find(a => a.weekCode === sheetName && a.status === 'active')
-  const approvedRegs = (bazaarData.registrations || []).filter(r => r?.announcementId === currentAnnouncement?.id && r?.status === 'approved')
-  const allowedProducts = []
-  approvedRegs.forEach(reg => {
-    if (reg.participateOnline) {
-      const onlineProducts = (reg.registrationProducts || []).filter(p => {
-        const ch = (p.channel || '').toLowerCase()
-        return (ch === 'online' || ch === 'both') && !p.isDeleted
-      })
-      if (onlineProducts.length) {
+  const currentAnnouncement = useMemo(() => {
+    return (bazaarData.announcements || [])
+      .find(a => a.weekCode === sheetName && a.status === 'active')
+  }, [bazaarData, sheetName])
+  const approvedRegs = useMemo(() => {
+    return (bazaarData.registrations || [])
+      .filter(r => r?.announcementId === currentAnnouncement?.id && r?.status === 'approved')
+  }, [bazaarData, currentAnnouncement])
+  const allowedProducts = useMemo(() => {
+    const result = []
+    approvedRegs.forEach(reg => {
+      if (reg.participateOnline) {
+        const onlineProducts = (reg.registrationProducts || []).filter(p => {
+          const ch = (p.channel || '').toLowerCase()
+          return (ch === 'online' || ch === 'both') && !p.isDeleted
+        })
+
         onlineProducts.forEach(prod => {
-          allowedProducts.push({
+          result.push({
             ...prod,
             owner: reg.supplierName,
             supplierId: reg.supplierId,
@@ -67,8 +74,9 @@ const Week = () => {
           })
         })
       }
-    }
-  })
+    })
+    return result
+  }, [approvedRegs])
 
 
   const mapOrderRow = (o) => {
@@ -122,7 +130,13 @@ const Week = () => {
         registrationId: prod.registrationId,
         supplierId: prod.supplierId
       }))
-      setProdukOptions(opts)
+      setProdukOptions(prev => {
+        const same =
+          prev.length === opts.length &&
+          prev.every((p, i) => p.value === opts[i].value)
+
+        return same ? prev : opts
+      })
     } else {
       const all = []
       Object.entries(productData).forEach(([username, items]) => {
