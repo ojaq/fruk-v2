@@ -15,130 +15,33 @@ import BazaarManagement from '../pages/BazaarManagement'
 import BazaarLogs from '../pages/BazaarLogs'
 import WeekLogs from '../pages/WeekLogs'
 import BazaarProducts from '../pages/BazaarProducts'
-import PrivateRoutes from './PrivateRoutes'
 import BazaarCharts from '../pages/BazaarCharts'
+import ProtectedLayout from './ProtectedLayout'
 
 const AppRoutes = () => {
   return (
     <Routes>
-      {/* public routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/invoice-customer/:num" element={<CustomerInvoice />} />
 
-      {/* protected routes */}
-      <Route
-        path="/dashboard"
-        element={
-          <PrivateRoutes>
-            <Dashboard />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/data-supplier"
-        element={
-          <PrivateRoutes>
-            <MasterSupplier />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/data-supplier/:user"
-        element={
-          <PrivateRoutes>
-            <DataSupplier />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/week/:num?"
-        element={
-          <PrivateRoutes>
-            <Week />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/weekoffline/:num?"
-        element={
-          <PrivateRoutes>
-            <WeekOffline />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/customer-invoice/:num?"
-        element={
-          <PrivateRoutes>
-            <CustomerInvoice />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/supplier-invoice/:num?"
-        element={
-          <PrivateRoutes>
-            <SupplierInvoice />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/bazaar-announcement"
-        element={
-          <PrivateRoutes>
-            <BazaarAnnouncement />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/bazaar-registration"
-        element={
-          <PrivateRoutes>
-            <BazaarRegistration />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/bazaar-management"
-        element={
-          <PrivateRoutes>
-            <BazaarManagement />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/bazaar-products"
-        element={
-          <PrivateRoutes>
-            <BazaarProducts />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/bazaar-logs"
-        element={
-          <PrivateRoutes>
-            <BazaarLogs />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/week-logs"
-        element={
-          <PrivateRoutes>
-            <WeekLogs />
-          </PrivateRoutes>
-        }
-      />
-      <Route
-        path="/bazaar-charts"
-        element={
-          <PrivateRoutes>
-            <BazaarCharts />
-          </PrivateRoutes>
-        }
-      />
+      <Route element={<ProtectedLayout />}>
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/data-supplier" element={<MasterSupplier />} />
+        <Route path="/data-supplier/:user" element={<DataSupplier />} />
+        <Route path="/week/:num?" element={<Week />} />
+        <Route path="/weekoffline/:num?" element={<WeekOffline />} />
+        <Route path="/customer-invoice/:num?" element={<CustomerInvoice />} />
+        <Route path="/supplier-invoice/:num?" element={<SupplierInvoice />} />
+        <Route path="/bazaar-announcement" element={<BazaarAnnouncement />} />
+        <Route path="/bazaar-registration" element={<BazaarRegistration />} />
+        <Route path="/bazaar-management" element={<BazaarManagement />} />
+        <Route path="/bazaar-products" element={<BazaarProducts />} />
+        <Route path="/bazaar-logs" element={<BazaarLogs />} />
+        <Route path="/week-logs" element={<WeekLogs />} />
+        <Route path="/bazaar-charts" element={<BazaarCharts />} />
+      </Route>
+
       <Route path="*" element={<Navigate to="/login" />} />
     </Routes>
   )

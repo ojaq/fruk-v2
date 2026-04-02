@@ -219,6 +219,8 @@ export const AuthProvider = ({ children }) => {
           imageUrl: p.image_url,
           offline_stock: p.offline_stock,
 
+          productId: p.product_id,
+
           isActive: p.is_active,
           isDeleted: p.is_deleted,
           createdAt: p.created_at
@@ -375,8 +377,7 @@ export const AuthProvider = ({ children }) => {
               hjk: p.hjk || null,
               hpp: p.hpp || null,
               image_url: p.image_url || p.imageUrl || null,
-              offline_stock: p.offline_stock || null,
-              is_active: p.isActive === undefined ? true : p.isActive,
+              offline_stock: p.offline_stock || null,              product_id: p.product_id || null,              is_active: p.isActive === undefined ? true : p.isActive,
               is_deleted: false
             }))
             if (newProducts.length) {
@@ -398,7 +399,8 @@ export const AuthProvider = ({ children }) => {
               hjk: p.hjk || null,
               hpp: p.hpp || null,
               image_url: p.image_url || p.imageUrl || null,
-              offline_stock: p.offline_stock || null
+              offline_stock: p.offline_stock || null,
+              product_id: p.product_id || null
             }))
             if (inserts.length) {
               await supabase.from('registration_products').insert(inserts)

@@ -271,9 +271,6 @@ const BazaarCharts = () => {
               setViewMode('charts')
               setActiveTab('items')
             }}>Reset</Button>
-            <Button color="warning" onClick={() => window.history.back()}>
-              Kembali
-            </Button>
           </div>
         </Col>
       </Row>

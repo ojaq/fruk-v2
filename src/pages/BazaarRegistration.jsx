@@ -4,7 +4,6 @@ import Swal from 'sweetalert2'
 import DataTable from 'react-data-table-component'
 import { Edit, Trash2, Eye } from 'react-feather'
 import { useAuth } from '../context/AuthContext'
-import { } from '../context/AuthContext'
 import Select from 'react-select'
 import moment from 'moment'
 import { supabase } from '../supabaseClient'
@@ -271,7 +270,7 @@ const BazaarRegistration = () => {
         return
       }
 
-      let updated = [...registrations]
+      let updated = [...(bazaarData?.registrations || registrations || [])]
 
       if (!editId) {
         const { data: latestRegs, error: regsErr } = await supabase
@@ -302,20 +301,6 @@ const BazaarRegistration = () => {
           return
         }
 
-        const mapped = (latestRegs || []).map(r => ({
-          id: r.id,
-          announcementId: r.announcement_id,
-          supplierId: r.supplier_id,
-          supplierName: (() => { const u = users.find(x => x.id === r.supplier_id); return u ? u.name : null })(),
-          participateOnline: r.participate_online,
-          participateOffline: r.participate_offline,
-          notes: r.notes,
-          status: r.status,
-          createdAt: r.created_at,
-          updatedAt: r.updated_at,
-          registrationProducts: r.registration_products || []
-        }))
-        updated = mapped
       }
 
       const registrationProducts = []
@@ -336,7 +321,8 @@ const BazaarRegistration = () => {
               ukuran: data.ukuran || null,
               hjk: data.hjk || null,
               hpp: data.hpp || null,
-              image_url: data.imageUrl || null
+              image_url: data.imageUrl || null,
+              product_id: data.id || null
             }
             if (channel === 'offline' || channel === 'both') {
               const val = (stockKeyId && offlineStocks[stockKeyId]) ? offlineStocks[stockKeyId] : offlineStocks[stockKeyLabel]
@@ -359,7 +345,8 @@ const BazaarRegistration = () => {
             hjk: data.hjk || null,
             hpp: data.hpp || null,
             image_url: data.imageUrl || null,
-            offline_stock: null
+            offline_stock: null,
+            product_id: data.id || null
           })
         })
           ; (selectedProductsOffline || []).forEach((p, idx) => {
@@ -377,7 +364,8 @@ const BazaarRegistration = () => {
               hjk: data.hjk || null,
               hpp: data.hpp || null,
               image_url: data.imageUrl || null,
-              offline_stock: stockVal ? parseInt(stockVal) : null
+              offline_stock: stockVal ? parseInt(stockVal) : null,
+              product_id: data.id || null
             })
           })
       }
@@ -451,27 +439,60 @@ const BazaarRegistration = () => {
     const regProds = row.registrationProducts || row.selectedProducts || []
 
     if (row.useSameProducts || !row.registrationProducts) {
-      selectedProducts = regProds.map(p => ({
-        label: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
-        value: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
-        data: p
-      }))
+      selectedProducts = regProds.map(p => {
+        const prod = userProducts.find(up => up.id === p.productId)
+        if (prod) {
+          return {
+            label: `${prod.namaProduk} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
+            value: `${prod.namaProduk} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
+            data: prod
+          }
+        } else {
+          return {
+            label: `${p.namaProduk || p.nama_produk || ''} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+            value: `${p.namaProduk || p.nama_produk || ''} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+            data: p
+          }
+        }
+      })
     } else {
       selectedProductsOnline = regProds
         .filter(p => p.channel === 'online' || p.channel === 'both')
-        .map(p => ({
-          label: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
-          value: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
-          data: p
-        }))
+        .map(p => {
+          const prod = userProducts.find(up => up.id === p.productId)
+          if (prod) {
+            return {
+              label: `${prod.namaProduk} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
+              value: `${prod.namaProduk} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
+              data: prod
+            }
+          } else {
+            return {
+              label: `${p.namaProduk || p.nama_produk || ''} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+              value: `${p.namaProduk || p.nama_produk || ''} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+              data: p
+            }
+          }
+        })
 
       selectedProductsOffline = regProds
         .filter(p => p.channel === 'offline' || p.channel === 'both')
-        .map(p => ({
-          label: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
-          value: `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
-          data: p
-        }))
+        .map(p => {
+          const prod = userProducts.find(up => up.id === p.productId)
+          if (prod) {
+            return {
+              label: `${prod.namaProduk} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
+              value: `${prod.namaProduk} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
+              data: prod
+            }
+          } else {
+            return {
+              label: `${p.namaProduk || p.nama_produk || ''} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+              value: `${p.namaProduk || p.nama_produk || ''} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
+              data: p
+            }
+          }
+        })
     }
 
     const offlineStocksMap = {}
@@ -731,9 +752,6 @@ const BazaarRegistration = () => {
         <Col xs="12" md="6" className="text-end mt-2 mt-md-0">
           <Button color="primary" className="me-2" onClick={handleAdd} disabled={loading || availableAnnouncements.length === 0}>
             Daftar Bazaar Baru
-          </Button>
-          <Button color="warning" onClick={() => window.history.back()} disabled={loading}>
-            Kembali
           </Button>
         </Col>
       </Row>

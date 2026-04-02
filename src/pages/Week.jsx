@@ -1,38 +1,47 @@
 import React, { useEffect, useState } from 'react'
-import { Alert, Badge, Button, Col, Form, FormGroup, Input, Label, Modal, ModalBody, ModalFooter, ModalHeader, Row } from 'reactstrap'
+import {
+  Badge,
+  Button,
+  Col,
+  Form,
+  FormGroup,
+  Input,
+  Label,
+  Modal,
+  ModalBody,
+  ModalFooter,
+  ModalHeader,
+  Row
+} from 'reactstrap'
 import DataTable from 'react-data-table-component'
 import { Edit, Trash2 } from 'react-feather'
 import Select from 'react-select'
 import Swal from 'sweetalert2'
 import { useAuth } from '../context/AuthContext'
+import { useAppUi } from '../context/AppUiContext'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 
 const Week = () => {
-  const { productData, registeredUsers, bazaarData, user, createOrder, weeks, orders } = useAuth()
+  const { productData, registeredUsers, bazaarData, createOrder, weeks, orders } = useAuth()
+  const { currentWeek } = useAppUi()
   const { num } = useParams()
-  const sheetName = `W${num}`
+  const activeWeek = num ? Number(num) : currentWeek
+  const sheetName = activeWeek ? `W${activeWeek}` : null
 
   const [form, setForm] = useState({
     pemesan: '', produkLabel: null, catatan: '', jumlah: '', bayar: ''
   })
   const [data, setData] = useState([])
-  const [editIndex, setEditIndex] = useState(null)
   const [editingOrderId, setEditingOrderId] = useState(null)
   const [produkOptions, setProdukOptions] = useState([])
   const [searchText, setSearchText] = useState('')
   const [selectedPemesan, setSelectedPemesan] = useState(null)
   const [loading, setLoading] = useState(false)
   const [selectedWeek, setSelectedWeek] = useState(null)
-  const [selectedChannel, setSelectedChannel] = useState(null)
-  const [selectedStatus, setSelectedStatus] = useState(null)
-  const [selectedMethod, setSelectedMethod] = useState(null)
-  const [fixModalOpen, setFixModalOpen] = useState(false)
-  const [missingEntries, setMissingEntries] = useState([])
-  const [selectedFixIds, setSelectedFixIds] = useState(new Set())
-  const [expandedPemesan, setExpandedPemesan] = useState(null)
+  const [orderModalOpen, setOrderModalOpen] = useState(false)
 
-  const isAllWeek = !num
+  const isAllWeek = !activeWeek
 
   const uniquePemesanThisWeek = !isAllWeek
     ? [...new Set((data || []).map(d => d.pemesan))].sort((a, b) => a.localeCompare(b))
@@ -79,6 +88,7 @@ const Week = () => {
   useEffect(() => {
     if (isAllWeek) {
       const sorted = (orders || [])
+        .filter(o => o.channel === 'online')
         .map(mapOrderRow)
         .sort((a, b) => (a.pemesan || '').toLowerCase().localeCompare((b.pemesan || '').toLowerCase()))
       setData(sorted)
@@ -94,7 +104,6 @@ const Week = () => {
 
   useEffect(() => {
     if (currentAnnouncement) {
-
       const opts = allowedProducts.map(prod => ({
         label: `${prod.namaProduk || prod.nama_produk || 'N/A'} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
         value: prod.registrationProductId,
@@ -226,8 +235,8 @@ const Week = () => {
       }
 
       setForm({ pemesan: '', produkLabel: null, catatan: '', jumlah: '', bayar: '' })
-      setEditIndex(null)
       setEditingOrderId(null)
+      setOrderModalOpen(false)
     } catch (error) {
       console.error('Error saving order:', error)
       Swal.fire('Error', 'Gagal menyimpan order', 'error')
@@ -236,8 +245,7 @@ const Week = () => {
     }
   }
 
-  const handleEdit = (row, i) => {
-
+  const handleEdit = (row) => {
     let opt = produkOptions.find(o => o.registrationProductId === row.registrationProductId)
     if (!opt) {
 
@@ -265,8 +273,8 @@ const Week = () => {
       bayar: row.bayar,
       adjustedHJK: opt ? getAdjustedHJK(opt.data.hjk) : 0
     })
-    setEditIndex(i)
     setEditingOrderId(row.id)
+    setOrderModalOpen(true)
   }
 
   const handleDelete = async (index) => {
@@ -304,135 +312,6 @@ const Week = () => {
     }
   }
 
-  const toggleFixSelection = id => {
-    setSelectedFixIds(prev => {
-      const newSet = new Set(prev)
-      newSet.has(id) ? newSet.delete(id) : newSet.add(id)
-      return newSet
-    })
-  }
-
-  const handleCheckMissingEntries = async () => {
-    try {
-      Swal.fire({
-        title: 'Memeriksa data...',
-        text: 'Mohon tunggu sebentar',
-        allowOutsideClick: false,
-        didOpen: () => {
-          Swal.showLoading()
-        }
-      })
-
-      let existing = []
-      let weekKey = sheetName
-
-      if (isAllWeek) {
-        if (!selectedWeek) {
-          Swal.close()
-          Swal.fire('Pilih minggu dulu', 'Kalau cek semua minggu, harus pilih minggu yang mana dulu.', 'warning')
-          return
-        }
-        weekKey = selectedWeek.value
-        existing = weekData[weekKey] || []
-      } else {
-        existing = weekData[weekKey] || []
-      }
-
-      const existingKeys = new Set(existing.map(e => `${e.pemesan}|${e.produkLabel}|${e.jumlah}`))
-
-      const { data: logs, error } = await supabase
-        .from('week_logs')
-        .select('*')
-        .in('action', ['add', 'delete'])
-        .eq('target', 'week_entry')
-        .like('target_id', `${weekKey}|%`)
-        .order('timestamp', { ascending: false })
-
-      if (error) throw error
-
-      const seen = new Set()
-      const deletedKeys = new Set()
-      const found = []
-
-      for (const log of logs) {
-        if (log.action === 'delete') {
-          const before = log.data_before ? JSON.parse(log.data_before) : null
-          if (!before) continue
-          const key = `${before.pemesan}|${before.produkLabel}|${before.jumlah}`
-          deletedKeys.add(key)
-        } else if (log.action === 'add') {
-          const after = log.data_after ? JSON.parse(log.data_after) : null
-          if (!after) continue
-          const key = `${after.pemesan}|${after.produkLabel}|${after.jumlah}`
-          if (!existingKeys.has(key) && !seen.has(key)) {
-            found.push({
-              ...after,
-              id: log.id,
-              week: weekKey,
-              _deleted: deletedKeys.has(key)
-            })
-            seen.add(key)
-          }
-        }
-      }
-
-      Swal.close()
-
-      const autoChecked = found.filter(e => !e._deleted).map(e => e.id)
-
-      setMissingEntries(found)
-      setSelectedFixIds(new Set(autoChecked))
-      setFixModalOpen(true)
-    } catch (err) {
-      Swal.close()
-      Swal.fire('Error', err.message, 'error')
-    }
-  }
-
-  const groupedMissing = missingEntries.reduce((acc, e) => {
-    if (!acc[e.pemesan]) acc[e.pemesan] = []
-    acc[e.pemesan].push(e)
-    return acc
-  }, {})
-
-  const handleRestoreMissingEntries = async () => {
-    try {
-      const selected = missingEntries.filter(e => selectedFixIds.has(e.id))
-      if (!selected.length) return
-
-      const grouped = selected.reduce((acc, e) => {
-        const wk = e.week || sheetName
-        acc[wk] = acc[wk] || []
-        acc[wk].push(e)
-        return acc
-      }, {})
-
-      for (const [wk, entries] of Object.entries(grouped)) {
-        const updated = [...(weekData[wk] || []), ...entries]
-        await saveWeekData(wk, updated)
-
-        for (const e of entries) {
-          await logWeekAction({
-            user,
-            action: 'restore',
-            sheetName: wk,
-            entryBefore: null,
-            entryAfter: e,
-            description: `Restored missing entry in ${wk}`
-          })
-        }
-      }
-
-      Swal.fire('Berhasil', 'Data berhasil dipulihkan', 'success')
-      setFixModalOpen(false)
-    } catch (err) {
-      Swal.fire('Error', 'Gagal memulihkan data', 'error')
-    }
-  }
-
-
-  const showStatusMethod = isAllWeek && (!selectedChannel || selectedChannel.value === 'offline')
-
   const columns = [
     { name: 'No', selector: (r, i) => i + 1, width: '60px', wrap: true },
     ...(isAllWeek ? [{ name: 'Minggu', selector: r => r?.week, wrap: true }] : []),
@@ -452,40 +331,6 @@ const Week = () => {
       wrap: true
     },
     {
-      name: 'Channel',
-      cell: (row) => {
-        if (!row.channel) return '-'
-        const map = {
-          online: { color: 'primary', label: 'Online' },
-          offline: { color: 'info', label: 'Offline' }
-        }
-        const config = map[row.channel] || { color: 'secondary', label: row.channel }
-        return <Badge color={config.color}>{config.label}</Badge>
-      },
-      width: "120px",
-      wrap: true
-    },
-    {
-      name: 'Status',
-      cell: (row) => {
-        if (!row.status) return '-'
-        const map = {
-          lunas: { color: 'success', label: 'Lunas' },
-          open_bill: { color: 'danger', label: 'Open Bill' }
-        }
-        const config = map[row.status] || { color: 'secondary', label: row.status }
-        return <Badge color={config.color}>{config.label}</Badge>
-      },
-      width: "120px",
-      wrap: true
-    },
-    {
-      name: 'Method',
-      cell: (row) => (row.method ? <Badge color="primary">{row.method.toUpperCase()}</Badge> : '-'),
-      width: "120px",
-      wrap: true
-    },
-    {
       name: 'Aksi',
       cell: (row) => {
         const filteredIndex = filtered.findIndex(f =>
@@ -496,7 +341,7 @@ const Week = () => {
         )
         return (
           <>
-            <Button size="sm" color="warning" className="me-2" onClick={() => handleEdit(row, filteredIndex)} disabled={loading || isAllWeek}>
+            <Button size="sm" color="warning" className="me-2" onClick={() => handleEdit(row)} disabled={loading || isAllWeek}>
               <Edit size={16} />
             </Button>
             <Button size="sm" color="danger" onClick={() => handleDelete(filteredIndex)} disabled={loading}>
@@ -516,10 +361,7 @@ const Week = () => {
     )
     const matchPemesan = selectedPemesan ? row.pemesan === selectedPemesan.value : true
     const matchWeek = selectedWeek ? row.week === selectedWeek.value : true
-    const matchChannel = isAllWeek && selectedChannel ? row.channel === selectedChannel.value : true
-    const matchStatus = showStatusMethod && selectedStatus ? row.status === selectedStatus.value : true
-    const matchMethod = showStatusMethod && selectedMethod ? row.method === selectedMethod.value : true
-    return matchSearch && matchPemesan && matchWeek && matchChannel && matchStatus && matchMethod
+    return matchSearch && matchPemesan && matchWeek
   })
 
   const uniquePemesanOptions = [...new Set(data.map(d => d.pemesan))].map(p => ({
@@ -533,108 +375,36 @@ const Week = () => {
       .map(w => ({ label: w, value: w }))
     : []
 
-  const statusOptions = [
-    { label: 'Lunas', value: 'lunas' },
-    { label: 'Open Bill', value: 'open_bill' }
-  ]
-
-  const methodOptions = [
-    { label: 'QRIS', value: 'qris' },
-    { label: 'Cash', value: 'cash' },
-    { label: 'Transfer', value: 'transfer' }
-  ]
-
   return (
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
-      <Row className="mb-2">
+      <Row className="mb-3">
         <Col xs="12" md="6">
-          <h4>{isAllWeek ? 'Semua Minggu' : `Minggu ${num}`}</h4>
+          <h4>{isAllWeek ? 'Semua Minggu - Online' : `Minggu ${activeWeek} - Online`}</h4>
         </Col>
-        <Col xs="12" md="6" className="text-end mt-2 mt-md-0">
-          {/* <Button color="info" onClick={handleCheckMissingEntries} disabled={loading} className="me-3">
-            🔍 Cek Data Minggu Hilang
-          </Button> */}
-          <Button color="warning" onClick={() => window.history.back()}>
-            Kembali
+        <Col xs="12" md="6" className="text-end mt-2 mt-md-0 d-flex flex-wrap gap-2 justify-content-md-end">
+          <Button
+            color="primary"
+            disabled={loading || isAllWeek}
+            onClick={() => {
+              setForm({ pemesan: '', produkLabel: null, catatan: '', jumlah: '', bayar: '' })
+              setEditingOrderId(null)
+              setOrderModalOpen(true)
+            }}
+          >
+            Tambah order
+          </Button>
+          <Button color="danger" className="me-3 mb-2 mb-md-0" onClick={() => {
+            setSearchText('')
+            setSelectedPemesan(null)
+            setSelectedWeek(null)
+          }} disabled={loading}>
+            Reset Filter
           </Button>
         </Col>
       </Row>
-      <Form onSubmit={handleSubmit} className="mb-4">
-        <Row className="mb-2">
-          <Col xs="12" sm="6" md="3" className="mb-2 mb-md-0">
-            <FormGroup>
-              <Label>Pemesan *</Label>
-              <Input
-                value={form.pemesan}
-                onChange={e => setForm(f => ({ ...f, pemesan: e.target.value }))}
-                disabled={loading || isAllWeek}
-                list={!isAllWeek ? 'pemesan-suggestions' : undefined}
-              />
-              {!isAllWeek && (
-                <datalist id="pemesan-suggestions">
-                  {uniquePemesanThisWeek.map((p, i) => (
-                    <option key={i} value={p} />
-                  ))}
-                </datalist>
-              )}
-            </FormGroup>
-          </Col>
-          <Col xs="12" sm="6" md="3" className="mb-2 mb-md-0">
-            <FormGroup>
-              <Label>Produk *</Label>
-              <Select
-                options={produkOptions}
-                value={form.produkLabel}
-                onChange={handleSelectProduk}
-                placeholder="🔽 Pilih produk"
-                isSearchable
-                isDisabled={loading || isAllWeek}
-              />
-              {form.produkLabel?.data?.keterangan && (
-                <small className="text-muted">
-                  Keterangan: {form.produkLabel.data.keterangan}
-                </small>
-              )}
-            </FormGroup>
-          </Col>
-          <Col xs="12" sm="6" md="3" className="mb-2 mb-md-0">
-            <FormGroup>
-              <Label>Catatan/Varian</Label>
-              <Input
-                value={form.catatan}
-                onChange={e => setForm(f => ({ ...f, catatan: e.target.value }))}
-                disabled={loading || isAllWeek}
-              />
-            </FormGroup>
-          </Col>
-          <Col xs="6" sm="3" md="1" className="mb-2 mb-md-0">
-            <FormGroup>
-              <Label>Jumlah *</Label>
-              <Input
-                type="number"
-                value={form.jumlah}
-                onChange={e => handleJumlahChange(e.target.value)}
-                disabled={loading || isAllWeek}
-              />
-            </FormGroup>
-          </Col>
-          <Col xs="6" sm="3" md="2">
-            <FormGroup>
-              <Label>Total Bayar</Label>
-              <Input
-                readOnly
-                value={
-                  form.bayar && parseFloat(form.bayar) > 0
-                    ? `Rp${parseFloat(form.bayar).toLocaleString('id-ID', { maximumFractionDigits: 0 })}`
-                    : ''
-                }
-                disabled={loading || isAllWeek}
-              />
-            </FormGroup>
-          </Col>
-        </Row>
+      <div className="mb-2">
         <Row className="mb-3">
-          <Col xs="12" md={isAllWeek ? "2" : "4"} className="mb-2 mb-md-0">
+          <Col xs="12" md="4" className="mb-2 mb-md-0">
             <Input
               placeholder="🔍 Cari apa aja..."
               value={searchText}
@@ -642,7 +412,7 @@ const Week = () => {
               disabled={loading}
             />
           </Col>
-          <Col xs="12" md={isAllWeek ? "2" : "4"} className="mb-2 mb-md-0">
+          <Col xs="12" md="4" className="mb-2 mb-md-0">
             <Select
               options={uniquePemesanOptions}
               isClearable
@@ -654,77 +424,104 @@ const Week = () => {
             />
           </Col>
           {isAllWeek && (
-            <>
-              <Col xs="12" md="2" className="mb-2 mb-md-0">
-                <Select
-                  options={uniqueWeekOptions}
-                  isClearable
-                  isSearchable
-                  placeholder="🔽 Filter minggu"
-                  value={selectedWeek}
-                  onChange={setSelectedWeek}
-                  isDisabled={loading}
-                />
-              </Col>
-              <Col xs="12" md="2" className="mb-2 mb-md-0">
-                <Select
-                  options={[
-                    { label: 'Online', value: 'online' },
-                    { label: 'Offline', value: 'offline' }
-                  ]}
-                  isClearable
-                  isSearchable
-                  placeholder="🔽 Filter channel"
-                  value={selectedChannel}
-                  onChange={setSelectedChannel}
-                  isDisabled={loading}
-                />
-              </Col>
-              {(!selectedChannel || selectedChannel.value === 'offline') && (
-                <>
-                  <Col xs="12" md="2" className="mb-2 mb-md-0">
-                    <Select
-                      options={statusOptions}
-                      isClearable
-                      isSearchable
-                      placeholder="🔽 Filter status"
-                      value={selectedStatus}
-                      onChange={setSelectedStatus}
-                      isDisabled={loading}
-                    />
-                  </Col>
-                  <Col xs="12" md="2" className="mb-2 mb-md-0">
-                    <Select
-                      options={methodOptions}
-                      isClearable
-                      isSearchable
-                      placeholder="🔽 Filter method"
-                      value={selectedMethod}
-                      onChange={setSelectedMethod}
-                      isDisabled={loading}
-                    />
-                  </Col>
-                </>
-              )}
-            </>
+            <Col xs="12" md="4" className="mb-2 mb-md-0">
+              <Select
+                options={uniqueWeekOptions}
+                isClearable
+                isSearchable
+                placeholder="🔽 Filter minggu"
+                value={selectedWeek}
+                onChange={setSelectedWeek}
+                isDisabled={loading}
+              />
+            </Col>
           )}
-          <Col xs="12" md={isAllWeek ? "2" : "4"} className="text-end">
-            <Button color="danger" className="me-3 mb-2 mb-md-0" onClick={() => {
-              setSearchText('')
-              setSelectedPemesan(null)
-              setSelectedWeek(null)
-              setSelectedChannel(null)
-              setSelectedStatus(null)
-              setSelectedMethod(null)
-            }} disabled={loading}>
-              Reset Filter
-            </Button>
-            <Button type="submit" color="primary" disabled={loading || isAllWeek} className="mb-2 mb-md-0">
-              {loading ? 'Loading...' : (editIndex !== null ? 'Update' : 'Tambah')}
-            </Button>
-          </Col>
         </Row>
-      </Form>
+      </div>
+
+      <Modal isOpen={orderModalOpen} toggle={() => setOrderModalOpen(false)} size="lg" centered>
+        <ModalHeader toggle={() => setOrderModalOpen(false)}>
+          {editingOrderId ? 'Edit order' : 'Order baru'} {!isAllWeek && `(minggu ${activeWeek}) - online`}
+        </ModalHeader>
+        <Form
+          onSubmit={(e) => {
+            handleSubmit(e)
+          }}
+        >
+          <ModalBody>
+            <Row className="mb-2">
+              <Col xs="12" sm="6" className="mb-3">
+                <Label>Pemesan *</Label>
+                <Input
+                  value={form.pemesan}
+                  onChange={(e) => setForm((f) => ({ ...f, pemesan: e.target.value }))}
+                  disabled={loading || isAllWeek}
+                  list={!isAllWeek ? 'pemesan-suggestions' : undefined}
+                />
+                {!isAllWeek && (
+                  <datalist id="pemesan-suggestions">
+                    {uniquePemesanThisWeek.map((p, i) => (
+                      <option key={i} value={p} />
+                    ))}
+                  </datalist>
+                )}
+              </Col>
+              <Col xs="12" sm="6" className="mb-3">
+                <Label>Produk *</Label>
+                <Select
+                  options={produkOptions}
+                  value={form.produkLabel}
+                  onChange={handleSelectProduk}
+                  placeholder="Pilih produk"
+                  isSearchable
+                  isDisabled={loading || isAllWeek}
+                />
+                {form.produkLabel?.data?.keterangan && (
+                  <small className="text-muted">Keterangan: {form.produkLabel.data.keterangan}</small>
+                )}
+              </Col>
+              <Col xs="12" className="mb-3">
+                <Label>Catatan/Varian</Label>
+                <Input
+                  value={form.catatan}
+                  onChange={(e) => setForm((f) => ({ ...f, catatan: e.target.value }))}
+                  disabled={loading || isAllWeek}
+                  type="textarea"
+                />
+              </Col>
+              <Col xs="6" md="4" className="mb-3">
+                <Label>Jumlah *</Label>
+                <Input
+                  type="number"
+                  value={form.jumlah}
+                  onChange={(e) => handleJumlahChange(e.target.value)}
+                  disabled={loading || isAllWeek}
+                />
+              </Col>
+              <Col xs="6" md="8" className="mb-3">
+                <Label>Total Bayar</Label>
+                <Input
+                  readOnly
+                  value={
+                    form.bayar && parseFloat(form.bayar) > 0
+                      ? `Rp${parseFloat(form.bayar).toLocaleString('id-ID', { maximumFractionDigits: 0 })}`
+                      : ''
+                  }
+                  disabled={loading || isAllWeek}
+                />
+              </Col>
+            </Row>
+          </ModalBody>
+          <ModalFooter>
+            <Button color="secondary" type="button" onClick={() => setOrderModalOpen(false)}>
+              Batal
+            </Button>
+            <Button color="primary" type="submit" disabled={loading || isAllWeek}>
+              {loading ? 'Menyimpan…' : editingOrderId ? 'Simpan' : 'Tambah'}
+            </Button>
+          </ModalFooter>
+        </Form>
+      </Modal>
       <div className="border overflow-auto" style={{ minHeight: 200 }}>
         <DataTable
           columns={columns}
@@ -738,101 +535,6 @@ const Week = () => {
           progressPending={loading}
         />
       </div>
-
-      <Modal isOpen={fixModalOpen} toggle={() => setFixModalOpen(!fixModalOpen)} size="lg">
-        <ModalHeader toggle={() => setFixModalOpen(false)}>
-          Data Hilang {isAllWeek ? (selectedWeek?.value || 'Pilih minggu') : sheetName}
-        </ModalHeader>
-
-        <ModalBody>
-          {missingEntries.length === 0 ? (
-            <Alert color="success">Tidak ada data yang hilang</Alert>
-          ) : (
-            <>
-              <p>
-                Ditemukan <strong>{missingEntries.length}</strong> data pesanan yang belum tercatat:
-              </p>
-              <ul className="list-unstyled">
-                {Object.entries(groupedMissing).map(([pemesan, entries]) => {
-                  const allChecked = entries.every(e => selectedFixIds.has(e.id))
-                  const someChecked = entries.some(e => selectedFixIds.has(e.id)) && !allChecked
-                  const totalPemesan = entries.filter(ent => selectedFixIds.has(ent.id)).reduce((sum, ent) => sum + Number(ent.bayar || 0), 0)
-                  const isExpanded = expandedPemesan === pemesan
-
-                  return (
-                    <li key={pemesan} className="mb-3 border rounded p-2 bg-light">
-                      <div className="d-flex align-items-center justify-content-between">
-                        <div>
-                          <Input
-                            type="checkbox"
-                            checked={allChecked}
-                            ref={el => {
-                              if (el) el.indeterminate = someChecked
-                            }}
-                            onChange={e => {
-                              const copy = new Set(selectedFixIds)
-                              if (e.target.checked) {
-                                entries.forEach(ent => copy.add(ent.id))
-                              } else {
-                                entries.forEach(ent => copy.delete(ent.id))
-                              }
-                              setSelectedFixIds(copy)
-                            }}
-                            className="me-2"
-                          />
-                          <b>{pemesan}</b>
-                          <span className="ms-2 text-muted">Total Rp{totalPemesan.toLocaleString('id-ID')}</span>
-                        </div>
-                        <Button
-                          size="sm"
-                          color="link"
-                          onClick={() => setExpandedPemesan(isExpanded ? null : pemesan)}
-                        >
-                          {isExpanded ? '▲ Sembunyikan' : '▼ Lihat Produk'}
-                        </Button>
-                      </div>
-
-                      {isExpanded && (
-                        <ul className="mt-2">
-                          {entries.map(ent => (
-                            <li
-                              key={ent.id}
-                              className="d-flex align-items-center justify-content-between border-bottom py-1"
-                            >
-                              <div>
-                                <Input
-                                  type="checkbox"
-                                  checked={selectedFixIds.has(ent.id)}
-                                  onChange={() => toggleFixSelection(ent.id)}
-                                  className="me-2"
-                                />
-                                {ent.produkLabel} <small>({ent.jumlah}x)</small>
-                                {ent._deleted && <span className="badge bg-danger ms-2">dihapus</span>}
-                              </div>
-                              <div>
-                                <small className="text-muted">
-                                  Rp{Number(ent.bayar || 0).toLocaleString('id-ID')}
-                                </small>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
-            </>
-          )}
-        </ModalBody>
-
-        <ModalFooter>
-          {missingEntries.length > 0 && (
-            <Button color="primary" onClick={handleRestoreMissingEntries}>Pulihkan</Button>
-          )}
-          <Button color="secondary" onClick={() => setFixModalOpen(false)}>Tutup</Button>
-        </ModalFooter>
-      </Modal>
     </div>
   )
 }

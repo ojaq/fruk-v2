@@ -316,9 +316,6 @@ const MasterSupplier = () => {
           }}>
             Reset Filter
           </Button>
-          <Button color="warning" onClick={() => window.history.back()}>
-            Kembali
-          </Button>
         </Col>
       </Row>
 

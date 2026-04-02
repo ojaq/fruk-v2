@@ -185,7 +185,7 @@ const BazaarProducts = () => {
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
       <Row className="mb-3">
         <Col xs="12" md="6">
-          <h4>Produk Bazaar per Pengumuman</h4>
+          <h4>Produk Bazaar per Bazaar</h4>
         </Col>
         <Col xs="12" md="6" className="text-end mt-2 mt-md-0">
           <Button color="danger" className="me-2" onClick={() => {
@@ -195,9 +195,6 @@ const BazaarProducts = () => {
             setParticipationFilter('all');
           }}>
             Reset Filter
-          </Button>
-          <Button color="warning" onClick={() => window.history.back()}>
-            Kembali
           </Button>
         </Col>
       </Row>

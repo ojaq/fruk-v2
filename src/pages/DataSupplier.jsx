@@ -449,9 +449,6 @@ const DataSupplier = () => {
                 </Button>
               </>
             )}
-            <Button color="warning" onClick={() => window.history.back()} disabled={loading}>
-              Kembali
-            </Button>
           </Col>
         </Row>
       </div>

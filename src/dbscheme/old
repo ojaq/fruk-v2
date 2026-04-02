@@ -1,0 +1,56 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+-- Most of the data uses json
+
+CREATE TABLE public.bazaar_data (
+  id integer NOT NULL DEFAULT nextval('bazaar_data_id_seq'::regclass),
+  data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT bazaar_data_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.bazaar_logs (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  timestamp timestamp with time zone DEFAULT now(),
+  user_name text,
+  action text,
+  target text,
+  target_id text,
+  data_before jsonb,
+  data_after jsonb,
+  description text,
+  CONSTRAINT bazaar_logs_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.products (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  owner text NOT NULL,
+  data jsonb NOT NULL,
+  CONSTRAINT products_pkey PRIMARY KEY (id),
+  CONSTRAINT products_owner_fkey FOREIGN KEY (owner) REFERENCES public.users(name)
+);
+CREATE TABLE public.users (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL UNIQUE,
+  role text NOT NULL CHECK (role = ANY (ARRAY['supplier'::text, 'admin'::text, 'superadmin'::text])),
+  requested_admin text DEFAULT 'false'::text CHECK (requested_admin = ANY (ARRAY['true'::text, 'false'::text, 'rejected'::text])),
+  profile jsonb,
+  password text,
+  CONSTRAINT users_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.week_logs (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  timestamp timestamp with time zone DEFAULT now(),
+  user_name text,
+  action text,
+  target text,
+  target_id text,
+  description text,
+  data_before jsonb,
+  data_after jsonb,
+  CONSTRAINT week_logs_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.weeks (
+  week_id text NOT NULL,
+  entries jsonb NOT NULL,
+  CONSTRAINT weeks_pkey PRIMARY KEY (week_id)
+);

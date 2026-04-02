@@ -1,399 +1,473 @@
-import React, { useEffect, useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { Button, Input, InputGroup, InputGroupText } from 'reactstrap'
+import { useAppUi } from '../context/AppUiContext'
+import { Button, Badge } from 'reactstrap'
 import { useNavigate } from 'react-router-dom'
-import Select from 'react-select'
+import Swal from 'sweetalert2'
+import {
+  Users,
+  Calendar,
+  Clipboard,
+  Package,
+  BarChart2,
+  Activity,
+  ShoppingCart,
+  AlertCircle,
+  Check,
+  X
+} from 'react-feather'
 
 const Dashboard = () => {
   const navigate = useNavigate()
-  const { user, logout, toggleProfileModal, registeredUsers, bazaarData } = useAuth()
+  const { user, toggleProfileModal, bazaarData, saveBazaarData, logBazaarAction } = useAuth()
+  const { adminView, currentWeek } = useAppUi()
 
   const isDev = user?.role === 'dev'
   const isAdmin = user?.role === 'admin'
   const isSupplier = user?.role === 'supplier'
 
-  const [isProfileEmpty, setIsProfileEmpty] = useState(false)
-  const [selectedSupplier, setSelectedSupplier] = useState(null)
+  const showAdminNav = (isAdmin || isDev) && adminView
+  const showSupplierNav = isSupplier || ((isAdmin || isDev) && !adminView)
 
-  const [adminView, setAdminView] = useState(() => {
-    return localStorage.getItem('adminView') === 'false' ? false : true
-  })
-
-  const [currentWeek, setCurrentWeek] = useState(() => {
-    const saved = Number(localStorage.getItem('currentWeek'))
-    return saved || null
-  })
-
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
-
-  const handleDataSupplier = () => {
-    navigate(`/data-supplier/${user.name}`)
-  }
-
-  const handleMasterDataSupplier = () => {
-    navigate(`/data-supplier`)
-  }
-
-  const handleViewSupplierData = () => {
-    if (selectedSupplier) {
-      navigate(`/data-supplier/${selectedSupplier.value}`)
-    }
-  }
-
-  const handleWeekly = () => navigate(`/week/${currentWeek}`)
-  const handleWeeklyOffline = () => navigate(`/weekoffline/${currentWeek}`)
-  const handleWeek = () => navigate(`/week`)
-  const handleWeeklyCustomerInvoice = () => navigate(`/customer-invoice/${currentWeek}`)
-  const handleWeeklySupplierInvoice = () => navigate(`/supplier-invoice/${currentWeek}`)
-  const handleCustomerInvoice = () => navigate(`/customer-invoice`)
-  const handleSupplierInvoice = () => navigate(`/supplier-invoice`)
-  const handleBazaarAnnouncement = () => navigate(`/bazaar-announcement`)
-  const handleBazaarRegistration = () => navigate(`/bazaar-registration`)
-  const handleBazaarManagement = () => navigate(`/bazaar-management`)
-  const handleBazaarCharts = () => navigate(`/bazaar-charts`)
+  const [quickLoading, setQuickLoading] = useState(null)
 
   const isEmpty = (v) => !v || String(v).trim() === ''
+  const isProfileEmpty =
+    isEmpty(user?.nama_supplier) ||
+    isEmpty(user?.nama_bank) ||
+    isEmpty(user?.no_rekening) ||
+    isEmpty(user?.nama_penerima)
 
-  const checkProfileEmpty = (u) => {
-    return (
-      isEmpty(u.nama_supplier) ||
-      isEmpty(u.nama_bank) ||
-      isEmpty(u.no_rekening) ||
-      isEmpty(u.nama_penerima)
-    )
-  }
+  const pendingRegs = useMemo(
+    () => (bazaarData?.registrations || []).filter((r) => r?.status === 'pending'),
+    [bazaarData]
+  )
 
-  useEffect(() => {
-    if (!user) return
-    setIsProfileEmpty(checkProfileEmpty(user))
-  }, [user])
-
-  const supplierOptions = (registeredUsers || [])
-    .filter(u => ['supplier', 'admin', 'dev'].includes(u.role))
-    .map(u => ({
-      label: `${u.name}${u.namaSupplier ? ` (${u.namaSupplier})` : ''}`,
-      value: u.name
-    }))
-
-  const pendingRegistrations = (bazaarData?.registrations || []).filter(r => r?.status === 'pending').length
+  const activeAnnouncementsCount = useMemo(
+    () => (bazaarData?.announcements || []).filter((a) => a?.status === 'active' && !a.isDeleted).length,
+    [bazaarData]
+  )
 
   let unregisteredAnnouncements = []
-  let rejectedAnnouncements = []
   let pendingAnnouncements = []
+  let rejectedAnnouncements = []
 
-  if (isSupplier || (isAdmin && !adminView) || (isDev && !adminView)) {
+  if (showSupplierNav) {
     const now = new Date()
-    const activeAnnouncements = (bazaarData?.announcements || []).filter(a => {
+    const activeAnnouncements = (bazaarData?.announcements || []).filter((a) => {
       if (a?.status !== 'active') return false
       if (!a.registrationDeadline) return true
-
-
       const deadline = new Date(a.registrationDeadline)
       deadline.setHours(23, 59, 59, 999)
-
       return deadline >= now
     })
 
-    const myRegs = (bazaarData?.registrations || []).filter(
-      r => r?.supplierId === user.id
-    )
+    const myRegs = (bazaarData?.registrations || []).filter((r) => r?.supplierId === user.id)
 
-    activeAnnouncements.forEach(a => {
-      const reg = myRegs.find(r => r?.announcementId === a.id)
-
+    activeAnnouncements.forEach((a) => {
+      const reg = myRegs.find((r) => r?.announcementId === a.id)
       if (!reg) {
         unregisteredAnnouncements.push(a)
         return
       }
-
-      if (reg.status === 'pending') {
-        pendingAnnouncements.push(a)
-        return
-      }
-
-      if (reg.status === 'rejected') {
-        rejectedAnnouncements.push(a)
-      }
+      if (reg.status === 'pending') pendingAnnouncements.push(a)
+      if (reg.status === 'rejected') rejectedAnnouncements.push(a)
     })
   }
 
-  const weekOptions = React.useMemo(() => {
-    const map = new Map()
-
-      ; (bazaarData?.announcements || []).forEach(a => {
-        if (!a.weekCode) return
-        if (a.is_deleted) return
-
-        const num = Number(a.weekCode.replace('W', ''))
-        if (!num) return
-
-        if (!map.has(num)) {
-          map.set(num, {
-            value: num,
-            label: `${a.title} – ${a.weekCode}`
-          })
-        }
-      })
-
-    return Array.from(map.values()).sort((a, b) => a.value - b.value)
+  const announcementById = useMemo(() => {
+    const m = {}
+    ;(bazaarData?.announcements || []).forEach((a) => {
+      if (a?.id) m[a.id] = a
+    })
+    return m
   }, [bazaarData])
 
-  return (
-    <div className="container mt-5" style={{ paddingBottom: '70px' }}>
-      <h3>Halo, {user.name}</h3>
-      <p>Role kamu sekarang: <strong>{user.role}</strong></p>
+  const quickApprove = async (row) => {
+    const ok = await Swal.fire({
+      title: 'Setujui pendaftaran?',
+      text: `${row.supplierName || ''}`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Setujui',
+      cancelButtonText: 'Batal'
+    })
+    if (!ok.isConfirmed) return
 
-      {/* {(isAdmin || isDev) && (
-        <div className="mb-4">
-          <Button color="danger" onClick={() => navigate('/bazaar-logs')} className="me-2">
-            Lihat Log Bazaar
-          </Button>
-          <Button color="danger" onClick={() => navigate('/week-logs')} className="me-2">
-            Lihat Log Week
+    setQuickLoading(row.id)
+    try {
+      const registrations = [...(bazaarData.registrations || [])]
+      const idx = registrations.findIndex((r) => r?.id === row.id)
+      if (idx === -1) throw new Error('not found')
+
+      await logBazaarAction({
+        user,
+        action: 'edit',
+        target: 'registration',
+        targetId: row.id,
+        dataBefore: registrations[idx],
+        dataAfter: {
+          ...registrations[idx],
+          status: 'approved',
+          updatedAt: new Date().toISOString(),
+          reviewedBy: user.name
+        },
+        description: 'Quick approve from dashboard'
+      })
+
+      registrations[idx] = {
+        ...registrations[idx],
+        status: 'approved',
+        updatedAt: new Date().toISOString(),
+        reviewedBy: user.name
+      }
+
+      await saveBazaarData({ ...bazaarData, registrations })
+      Swal.fire('Berhasil', 'Disetujui', 'success')
+    } catch (e) {
+      console.error(e)
+      Swal.fire('Error', 'Gagal menyetujui', 'error')
+    } finally {
+      setQuickLoading(null)
+    }
+  }
+
+  const quickReject = async (row) => {
+    const { value: reason } = await Swal.fire({
+      title: 'Tolak pendaftaran?',
+      input: 'textarea',
+      inputPlaceholder: 'Alasan penolakan…',
+      showCancelButton: true,
+      confirmButtonText: 'Tolak',
+      cancelButtonText: 'Batal',
+      inputValidator: (value) => {
+        if (!value || !value.trim()) return 'Alasan wajib diisi'
+      }
+    })
+    if (!reason) return
+
+    setQuickLoading(row.id)
+    try {
+      const registrations = [...(bazaarData.registrations || [])]
+      const idx = registrations.findIndex((r) => r?.id === row.id)
+      if (idx === -1) throw new Error('not found')
+
+      await logBazaarAction({
+        user,
+        action: 'edit',
+        target: 'registration',
+        targetId: row.id,
+        dataBefore: registrations[idx],
+        dataAfter: {
+          ...registrations[idx],
+          status: 'rejected',
+          adminNotes: reason,
+          updatedAt: new Date().toISOString(),
+          reviewedBy: user.name
+        },
+        description: 'Quick reject from dashboard'
+      })
+
+      registrations[idx] = {
+        ...registrations[idx],
+        status: 'rejected',
+        adminNotes: reason,
+        updatedAt: new Date().toISOString(),
+        reviewedBy: user.name
+      }
+
+      await saveBazaarData({ ...bazaarData, registrations })
+      Swal.fire('Berhasil', 'Ditolak', 'success')
+    } catch (e) {
+      console.error(e)
+      Swal.fire('Error', 'Gagal menolak', 'error')
+    } finally {
+      setQuickLoading(null)
+    }
+  }
+
+  const currentAnnouncement = useMemo(() => {
+    if (currentWeek == null) return null
+
+    return (bazaarData?.announcements || []).find(a => {
+      if (!a?.weekCode) return false
+      const num = Number(String(a.weekCode).replace('W', ''))
+      return num === currentWeek && a.status === 'active' && !a.isDeleted
+    })
+  }, [bazaarData, currentWeek])
+
+  const weekHint = currentWeek != null ? currentAnnouncement ? `W${currentWeek} – ${currentAnnouncement.title}` : `W${currentWeek}` : 'Semua Minggu/Bazaar'
+
+  return (
+    <div>
+      <div className="app-dashboard-hero mb-4">
+        <div className="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
+          <div>
+            <h1 className="h4 mb-1 text-white fw-bold">{user.name}</h1>
+            <div className="d-flex flex-wrap gap-2 align-items-center">
+              <Badge color="light" className="text-dark">
+                {user.role}
+              </Badge>
+              {showAdminNav && <span className="small">Tampilan admin</span>}
+              {showSupplierNav && !isSupplier && (
+                <span className="small">Tampilan supplier</span>
+              )}
+            </div>
+          </div>
+          <div className="text-md-end text-white fw-bold max-w-100" style={{ maxWidth: 320 }}>
+            {weekHint}
+          </div>
+        </div>
+      </div>
+
+      {showSupplierNav && isProfileEmpty && (
+        <div className="alert alert-warning d-flex align-items-center gap-3 app-page-card border-0 mb-4" role="status">
+          <AlertCircle size={24} />
+          <div className="flex-grow-1">
+            <strong>Lengkapi profil</strong> — bank dan rekening diperlukan untuk pembayaran.
+          </div>
+          <Button color="warning" onClick={toggleProfileModal}>
+            Isi profil
           </Button>
         </div>
-      )} */}
-
-      {((isDev && adminView) || (isAdmin && adminView)) && (
-        <>
-          <p className="mt-4"><strong>🛠️ Panduan untuk Admin:</strong></p>
-          <ul>
-            <li className="mb-2">Cek <strong>Data Supplier disini.</strong> &nbsp;
-              <Button color="primary" size="sm" onClick={handleMasterDataSupplier}>
-                Data Supplier
-              </Button>
-            </li>
-            <li className="mb-2">Lihat data supplier tertentu: &nbsp;
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '10px' }}>
-                <Select
-                  options={supplierOptions}
-                  placeholder="🔽 Pilih supplier"
-                  isClearable
-                  isSearchable
-                  value={selectedSupplier}
-                  onChange={setSelectedSupplier}
-                  styles={{
-                    control: (base) => ({
-                      ...base,
-                      width: '300px',
-                    })
-                  }}
-                />
-                <Button
-                  color="primary"
-                  size="sm"
-                  onClick={handleViewSupplierData}
-                  disabled={!selectedSupplier}
-                >
-                  Lihat Data
-                </Button>
-              </div>
-            </li>
-            <li className="mb-2">Atur data dan masuk di bazaar <strong>online</strong>: &nbsp;
-              <div style={{ width: 260, display: 'inline-block' }}>
-                <Select
-                  options={weekOptions}
-                  placeholder="📅 Pilih Bazaar / Week"
-                  isClearable
-                  value={weekOptions.find(w => w.value === currentWeek) || null}
-                  onChange={(opt) => {
-                    if (!opt) {
-                      setCurrentWeek(null)
-                      localStorage.removeItem('currentWeek')
-                      return
-                    }
-
-                    setCurrentWeek(opt.value)
-                    localStorage.setItem('currentWeek', opt.value)
-                  }}
-                />
-              </div>
-              <Button color="primary" size="sm" className="ms-2" onClick={handleWeekly}>
-                Week {currentWeek}
-              </Button>
-            </li>
-            <li className="mb-2">Atur data dan masuk di bazaar <strong>offline</strong>: &nbsp;
-              <div style={{ width: 260, display: 'inline-block' }}>
-                <Select
-                  options={weekOptions}
-                  placeholder="📅 Pilih Bazaar / Week"
-                  isClearable
-                  value={weekOptions.find(w => w.value === currentWeek) || null}
-                  onChange={(opt) => {
-                    if (!opt) {
-                      setCurrentWeek(null)
-                      localStorage.removeItem('currentWeek')
-                      return
-                    }
-
-                    setCurrentWeek(opt.value)
-                    localStorage.setItem('currentWeek', opt.value)
-                  }}
-                />
-              </div>
-              <Button color="primary" size="sm" className="ms-2" onClick={handleWeeklyOffline}>
-                Week {currentWeek}
-              </Button>
-            </li>
-            <li className="mb-2">Lihat invoice mingguan di <strong>Customer Invoice</strong>. &nbsp;
-              <Button color="primary" size="sm" className="ms-2" onClick={handleWeeklyCustomerInvoice}>
-                Customer Invoice Week {currentWeek}
-              </Button>
-            </li>
-            <li className="mb-2">Lihat invoice mingguan di <strong>Supplier Invoice</strong>. &nbsp;
-              <Button color="primary" size="sm" className="ms-2" onClick={handleWeeklySupplierInvoice}>
-                Supplier Invoice Week {currentWeek}
-              </Button>
-            </li>
-            <li className="mb-2">Atur data dan masuk ke seluruh minggu: &nbsp;
-              <Button color="primary" size="sm" className="ms-2" onClick={handleWeek}>
-                All Week
-              </Button>
-            </li>
-            <li className="mb-2">Cek data berbentuk grafik dari semua minggu di <strong>Bazaar Charts</strong>.
-              <Button color="primary" size="sm" className="ms-2" onClick={handleBazaarCharts}>
-                Bazaar Charts
-              </Button>
-            </li>
-            <li className="mb-2">Lihat semua invoice dari semua minggu di <strong>All Customer Invoice</strong>.
-              <Button color="primary" size="sm" className="ms-2" onClick={handleCustomerInvoice}>
-                All Customer Invoice
-              </Button>
-            </li>
-            <li className="mb-2">Lihat semua invoice dari semua minggu di <strong>All Supplier Invoice</strong>.
-              <Button color="primary" size="sm" className="ms-2" onClick={handleSupplierInvoice}>
-                All Supplier Invoice
-              </Button>
-            </li>
-            <li className="mb-2">Kelola pengumuman bazaar di <strong>Bazaar Pengumuman</strong>.
-              <Button color="primary" size="sm" className="ms-2" onClick={handleBazaarAnnouncement}>
-                Bazaar Pengumuman
-              </Button>
-            </li>
-            <li className="mb-2">Kelola pendaftaran bazaar di <strong>Kelola Pendaftaran Bazaar</strong>.
-              <Button color="primary" size="sm" className="ms-2 position-relative" onClick={handleBazaarManagement}>
-                Kelola Pendaftaran Bazaar
-              </Button>
-              {pendingRegistrations > 0 && (
-                <span className="badge bg-danger py-2 px-3 ms-2">{pendingRegistrations}</span>
-              )}
-            </li>
-            <li className="mb-2">Lihat <strong>Data Supplier per bazaar.</strong> &nbsp;
-              <Button color="primary" size="sm" onClick={() => navigate('/bazaar-products')}>
-                Lihat Produk Bazaar (per Pengumuman)
-              </Button>
-            </li>
-          </ul>
-        </>
       )}
 
-      {((isDev && !adminView) || (isAdmin && !adminView) || isSupplier) && (
-        <>
-          <p className="mt-4"><strong>📦 Panduan untuk Supplier:</strong></p>
-          <ul>
-            {isProfileEmpty && (
-              <li className="mb-2">
-                🚨 <strong>Lengkapi profil kamu terlebih dahulu.</strong> &nbsp;
-                <Button color="warning" size="sm" onClick={toggleProfileModal}>
-                  Isi Profil Sekarang
-                </Button>
-              </li>
-            )}
-            {!isProfileEmpty && (
-              <li className="mb-2">
-                <>✔️ Profil kamu sudah lengkap. Kamu bisa mengedit disini.</> &nbsp;
-                <Button color="primary" size="sm" onClick={toggleProfileModal}>
-                  Edit Profil
-                </Button>
-              </li>
-            )}
-            <li className="mb-2">Isi data produk kamu dari menu <strong>Data Supplier.</strong> &nbsp;
-              <Button color="primary" size="sm" onClick={handleDataSupplier}>
-                Data Supplier {user.name}
-              </Button>
-            </li>
-            <li className="mb-2">Double-Cek <strong>Data Supplier kamu disini.</strong> &nbsp;
-              <Button color="primary" size="sm" onClick={handleMasterDataSupplier}>
-                Data Supplier
-              </Button>
-            </li>
-            <li className="mb-2">Cek pesanan mingguan di <strong>Supplier Invoice</strong>. &nbsp;
-              <div style={{ width: 260, display: 'inline-block' }}>
-                <Select
-                  options={weekOptions}
-                  placeholder="📅 Pilih Bazaar / Week"
-                  isClearable
-                  value={weekOptions.find(w => w.value === currentWeek) || null}
-                  onChange={(opt) => {
-                    if (!opt) {
-                      setCurrentWeek(null)
-                      localStorage.removeItem('currentWeek')
-                      return
-                    }
-
-                    setCurrentWeek(opt.value)
-                    localStorage.setItem('currentWeek', opt.value)
-                  }}
-                />
-              </div>
-              <Button color="primary" size="sm" className="ms-2" onClick={handleWeeklySupplierInvoice}>
-                Supplier Invoice Week {currentWeek}
-              </Button>
-            </li>
-            <li className="mb-2">Cek data berbentuk grafik dari semua minggu di <strong>Bazaar Charts</strong>.
-              <Button color="primary" size="sm" className="ms-2" onClick={handleBazaarCharts}>
-                Bazaar Charts
-              </Button>
-            </li>
-            <li className="mb-2">Cek semua pesanan dari semua minggu di <strong>All Supplier Invoice</strong>.
-              <Button color="primary" size="sm" className="ms-2" onClick={handleSupplierInvoice}>
-                All Supplier Invoice
-              </Button>
-            </li>
-            <li className="mb-2">Daftar untuk bazaar di <strong>Daftar Bazaar</strong>.
-              <Button color="primary" size="sm" className="ms-2 position-relative" onClick={handleBazaarRegistration}>
-                Daftar Bazaar
-              </Button>
-              {(unregisteredAnnouncements.length > 0 || pendingAnnouncements.length > 0 || rejectedAnnouncements.length > 0) && (
-                <>
-                  {unregisteredAnnouncements.length > 0 && (
-                    <div className="badge bg-warning text-black py-2 px-3 ms-2">
-                      Belum daftar: {unregisteredAnnouncements.map(a => a.title).join(', ')}
-                    </div>
-                  )}
-                  {rejectedAnnouncements.length > 0 && (
-                    <div className="badge bg-danger py-2 px-3 ms-2">
-                      Ditolak: {rejectedAnnouncements.map(a => a.title).join(', ')}
-                    </div>
-                  )}
-                </>
-              )}
-            </li>
-          </ul>
-        </>
-      )}
-
-      <div className="mt-4">
-        {(isDev || isAdmin) && (
-          <Button
-            color="secondary"
-            onClick={() => {
-              setAdminView(prev => {
-                localStorage.setItem('adminView', String(!prev))
-                return !prev
-              })
-            }}
-            className="me-3"
-          >
-            Pindah ke Tampilan {adminView ? 'Supplier' : 'Admin'}
+      {showSupplierNav && !isProfileEmpty && (
+        <div className="alert alert-light border app-page-card mb-4 py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <span className="small text-muted mb-0">Profil sudah lengkap.</span>
+          <Button size="sm" color="primary" outline onClick={toggleProfileModal}>
+            Edit profil
           </Button>
-        )}
+        </div>
+      )}
 
-        <Button color="danger" onClick={handleLogout}>Logout</Button>
-      </div>
+      {showSupplierNav && (unregisteredAnnouncements.length > 0 || pendingAnnouncements.length > 0) && (
+        <div className="mb-4 d-flex flex-wrap gap-2">
+          {unregisteredAnnouncements.length > 0 && (
+            <Badge color="warning" className="p-2 text-dark">
+              Belum daftar: {unregisteredAnnouncements.map((a) => a.title).join(', ')}
+            </Badge>
+          )}
+          {pendingAnnouncements.length > 0 && (
+            <Badge color="info" className="p-2">
+              Menunggu verifikasi: {pendingAnnouncements.map((a) => a.title).join(', ')}
+            </Badge>
+          )}
+          {rejectedAnnouncements.length > 0 && (
+            <Badge color="danger" className="p-2">
+              Ditolak: {rejectedAnnouncements.map((a) => a.title).join(', ')}
+            </Badge>
+          )}
+        </div>
+      )}
+
+      {showAdminNav && (
+        <>
+          <h2 className="h6 text-uppercase text-muted mb-3" style={{ letterSpacing: '0.06em' }}>
+            Butuh tindakan
+          </h2>
+          <div className="app-page-card p-3 p-md-4 mb-4">
+            <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+              <div>
+                <strong>Pendaftaran menunggu</strong>
+                <div className="small text-muted">{pendingRegs.length} antrian</div>
+              </div>
+              <Button color="primary" size="sm" outline onClick={() => navigate('/bazaar-management')}>
+                Buka halaman penuh
+              </Button>
+            </div>
+            {pendingRegs.length === 0 ? (
+              <p className="text-muted small mb-0">Tidak ada pendaftaran pending.</p>
+            ) : (
+              <ul className="list-unstyled mb-0">
+                {pendingRegs.slice(0, 5).map((r) => {
+                  const ann = announcementById[r.announcementId]
+                  const busy = quickLoading === r.id
+                  return (
+                    <li
+                      key={r.id}
+                      className="d-flex flex-column flex-sm-row align-items-stretch align-items-sm-center gap-2 py-2 border-bottom border-light"
+                    >
+                      <div className="flex-grow-1 min-w-0">
+                        <div className="fw-semibold text-truncate">{r.supplierName || 'Supplier'}</div>
+                        <div className="small text-muted text-truncate">
+                          {ann?.title || 'Pengumuman'} · {ann?.weekCode || ''}
+                        </div>
+                      </div>
+                      <div className="d-flex gap-2 flex-shrink-0">
+                        <Button
+                          size="sm"
+                          color="success"
+                          disabled={busy}
+                          onClick={() => quickApprove(r)}
+                          className="d-flex align-items-center gap-1"
+                        >
+                          <Check size={16} /> Setujui
+                        </Button>
+                        <Button
+                          size="sm"
+                          color="danger"
+                          outline
+                          disabled={busy}
+                          onClick={() => quickReject(r)}
+                          className="d-flex align-items-center gap-1"
+                        >
+                          <X size={16} /> Tolak
+                        </Button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            {pendingRegs.length > 5 && (
+              <p className="small text-muted mt-2 mb-0">Menampilkan 5 pertama. Sisanya di kelola pendaftaran.</p>
+            )}
+          </div>
+
+          <h2 className="h6 text-uppercase text-muted mb-3" style={{ letterSpacing: '0.06em' }}>
+            Modul
+          </h2>
+          <div className="app-teaser-grid mb-4">
+            <div className="app-teaser">
+              <Calendar className="text-app-primary mb-2" size={22} />
+              <h6>Minggu online</h6>
+              <p className="hint">Kelola pesanan dan minggu online.</p>
+              <Button color="primary" size="sm" onClick={() => navigate('/week')}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <Activity className="text-app-primary mb-2" size={22} />
+              <h6>Minggu offline</h6>
+              <p className="hint">Kelola pesanan dan minggu offline.</p>
+              <Button color="primary" size="sm" onClick={() => navigate('/weekoffline')}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <Clipboard className="text-app-primary mb-2" size={22} />
+              <h6>Invoice customer</h6>
+              <p className="hint">Kelola invoice untuk customer.</p>
+              <Button color="primary" size="sm" onClick={() => navigate('/customer-invoice')}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <ShoppingCart className="text-app-primary mb-2" size={22} />
+              <h6>Invoice supplier</h6>
+              <p className="hint">Kelola invoice untuk supplier.</p>
+              <Button color="primary" size="sm" onClick={() => navigate('/supplier-invoice')}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <Calendar className="text-app-primary mb-2" size={22} />
+              <h6>Pengumuman bazaar</h6>
+              <p className="hint">
+                <span className="app-stat-pill me-1">{activeAnnouncementsCount} aktif</span> Jadwal &
+                kuota.
+              </p>
+              <Button color="primary" size="sm" onClick={() => navigate('/bazaar-announcement')}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <Clipboard className="text-app-primary mb-2" size={22} />
+              <h6>Kelola pendaftaran</h6>
+              <p className="hint">
+                <span className="app-stat-pill me-1">{pendingRegs.length} pending</span> Verifikasi
+                supplier.
+              </p>
+              <Button color="primary" size="sm" onClick={() => navigate('/bazaar-management')}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <Users className="text-app-primary mb-2" size={22} />
+              <h6>Master supplier</h6>
+              <p className="hint">Kelola direktori supplier dan produk master.</p>
+              <Button color="primary" size="sm" onClick={() => navigate('/data-supplier')}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <Package className="text-app-primary mb-2" size={22} />
+              <h6>Produk per bazaar</h6>
+              <p className="hint">Snapshot produk terverifikasi per bazaar.</p>
+              <Button color="primary" size="sm" onClick={() => navigate('/bazaar-products')}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <BarChart2 className="text-app-primary mb-2" size={22} />
+              <h6>Grafik bazaar</h6>
+              <p className="hint">Ringkasan performa lintas minggu.</p>
+              <Button color="primary" size="sm" onClick={() => navigate('/bazaar-charts')}>
+                Buka
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {showSupplierNav && (
+        <>
+          <h2 className="h6 text-uppercase text-muted mb-3" style={{ letterSpacing: '0.06em' }}>
+            Modul supplier
+          </h2>
+          <div className="app-teaser-grid mb-4">
+            <div className="app-teaser">
+              <ShoppingCart className="text-app-primary mb-2" size={22} />
+              <h6>Produk saya</h6>
+              <p className="hint">Katalog yang Anda pasok ke bazaar.</p>
+              <Button color="primary" size="sm" onClick={() => navigate(`/data-supplier/${user.name}`)}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <Users className="text-app-primary mb-2" size={22} />
+              <h6>Direktori supplier</h6>
+              <p className="hint">Lihat supplier & produk lain (read-only).</p>
+              <Button color="primary" size="sm" onClick={() => navigate('/data-supplier')}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <Clipboard className="text-app-primary mb-2" size={22} />
+              <h6>Daftar bazaar</h6>
+              <p className="hint">Ikut serta pada pengumuman yang masih buka.</p>
+              <Button color="primary" size="sm" onClick={() => navigate('/bazaar-registration')}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <BarChart2 className="text-app-primary mb-2" size={22} />
+              <h6>Grafik bazaar</h6>
+              <p className="hint">Visualisasi agregat (jika tersedia untuk Anda).</p>
+              <Button color="primary" size="sm" onClick={() => navigate('/bazaar-charts')}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <Clipboard className="text-app-primary mb-2" size={22} />
+              <h6>Invoice customer</h6>
+              <p className="hint">Kelola invoice untuk customer.</p>
+              <Button color="primary" size="sm" onClick={() => navigate('/customer-invoice')}>
+                Buka
+              </Button>
+            </div>
+            <div className="app-teaser">
+              <ShoppingCart className="text-app-primary mb-2" size={22} />
+              <h6>Invoice supplier</h6>
+              <p className="hint">Kelola invoice untuk supplier.</p>
+              <Button color="primary" size="sm" onClick={() => navigate('/supplier-invoice')}>
+                Buka
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

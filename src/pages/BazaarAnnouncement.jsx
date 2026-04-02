@@ -419,9 +419,6 @@ ${announcement.terms ? `\nSyarat dan Ketentuan:\n${announcement.terms}` : ''}`
             <Plus size={16} className="me-1" />
             Tambah Pengumuman
           </Button>
-          <Button color="warning" onClick={() => window.history.back()} disabled={loading}>
-            Kembali
-          </Button>
         </Col>
       </Row>
 

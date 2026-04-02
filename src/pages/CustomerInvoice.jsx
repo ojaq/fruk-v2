@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useAppUi } from '../context/AppUiContext'
 import DataTable from 'react-data-table-component'
 import { Button, Row, Col, Card, CardHeader, CardBody, Input } from 'reactstrap'
 import jsPDF from 'jspdf'
@@ -9,6 +10,8 @@ import Select from 'react-select'
 
 const CustomerInvoice = () => {
   const { num } = useParams()
+  const { currentWeek } = useAppUi()
+  const activeWeek = num ? Number(num) : currentWeek
   const { orders, weeks, weekData } = useAuth()
   const [grouped, setGrouped] = useState([])
   const [searchText, setSearchText] = useState('')
@@ -23,9 +26,9 @@ const CustomerInvoice = () => {
   useEffect(() => {
     const relevant = (orders || []).filter(o => o.channel === 'online')
       .filter(o => {
-        if (!num) return true
+        if (!activeWeek) return true
         const weekCode = weeks.find(w => w.id === o.week_id)?.week_code
-        return weekCode === `W${num}`
+        return weekCode === `W${activeWeek}`
       })
 
     const map = {}
@@ -66,7 +69,7 @@ const CustomerInvoice = () => {
       const totalHarga = list.reduce((a, b) => a + b.bayar, 0)
       return { id: i + 1, pemesan, items: list, totalQty, totalHarga }
     }).sort((a, b) => a.pemesan.toLowerCase().localeCompare(b.pemesan.toLowerCase())))
-  }, [orders, weeks, num])
+  }, [orders, weeks, activeWeek])
 
   const sendInvoice = (pemesan, items, weekNum) => {
     const date = new Date()
@@ -181,7 +184,7 @@ const CustomerInvoice = () => {
     let y = 20
 
     doc.setFontSize(14)
-    doc.text(`Customer Invoice - ${num ? `Minggu ${num}` : 'Semua Minggu'}`, 14, y)
+    doc.text(`Customer Invoice - ${activeWeek ? `Minggu ${activeWeek}` : 'Semua Minggu'}`, 14, y)
 
     y += 5
 
@@ -265,7 +268,7 @@ const CustomerInvoice = () => {
       }
     })
 
-    doc.save(`Customer-Invoice-${num ? `Minggu-${num}` : 'Semua-Minggu'}.pdf`)
+    doc.save(`Customer-Invoice-${activeWeek ? `Minggu-${activeWeek}` : 'Semua-Minggu'}.pdf`)
   }
 
   const filteredGrouped = grouped.filter(group => {
@@ -285,12 +288,9 @@ const CustomerInvoice = () => {
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
       <Row className="mb-3">
         <Col xs="12" md="6">
-          <h4>Customer Invoice - {num ? `Minggu ${num}` : 'Semua Minggu'}</h4>
+          <h4>Customer Invoice - {activeWeek ? `Minggu ${activeWeek}` : 'Semua Minggu'}</h4>
         </Col>
         <Col xs="12" md="6" className="text-end mt-2 mt-md-0">
-          <Button color="warning" onClick={() => window.history.back()}>
-            Kembali
-          </Button>
         </Col>
       </Row>
       <Row className="mb-3">
