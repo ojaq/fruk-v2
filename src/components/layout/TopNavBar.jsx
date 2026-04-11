@@ -214,22 +214,22 @@ export default function TopNavBar() {
                 styles={selectCompact}
               />
             </div>
-
-            {(isAdmin || isDev) && (
-              <Button
-                size="sm"
-                outline
-                className="app-topnav-btn border-light text-white"
-                onClick={() => {
-                  setAdminView((v) => !v)
-                  navigate('/dashboard')
-                  window.location.reload()
-                }}
-              >
-                {adminView ? 'Mode supplier' : 'Mode admin'}
-              </Button>
-            )}
           </div>
+
+          {(isAdmin || isDev) && (
+            <Button
+              size="sm"
+              outline
+              className="app-topnav-btn border-light text-white"
+              onClick={() => {
+                setAdminView(v => !v)
+                navigate('/dashboard')
+                window.location.reload()
+              }}
+            >
+              {adminView ? 'Mode supplier' : 'Mode admin'}
+            </Button>
+          )}
 
           <Dropdown
             isOpen={userMenuOpen}

@@ -79,9 +79,10 @@ export const AuthProvider = ({ children }) => {
 
     const grouped = {}
     mapped.forEach(p => {
-      const name = p.namaSupplier || 'unknown'
-      if (!grouped[name]) grouped[name] = []
-      grouped[name].push(p)
+      const owner = usersById[p.ownerId]
+      const ownerName = owner?.name || 'unknown'
+      if (!grouped[ownerName]) grouped[ownerName] = []
+      grouped[ownerName].push(p)
     })
     setProductData(grouped)
 
@@ -377,7 +378,7 @@ export const AuthProvider = ({ children }) => {
               hjk: p.hjk || null,
               hpp: p.hpp || null,
               image_url: p.image_url || p.imageUrl || null,
-              offline_stock: p.offline_stock || null,              product_id: p.product_id || null,              is_active: p.isActive === undefined ? true : p.isActive,
+              offline_stock: p.offline_stock || null, product_id: p.product_id || null, is_active: p.isActive === undefined ? true : p.isActive,
               is_deleted: false
             }))
             if (newProducts.length) {

@@ -40,14 +40,6 @@ export default function AppSidebar({ open }) {
 
   return (
     <aside className={`app-sidebar ${open ? 'is-open' : ''}`} aria-label="Menu utama">
-      <div className="app-sidebar-brand d-none d-lg-flex align-items-center gap-2 px-3 py-3">
-        <Layers size={22} className="text-app-accent" aria-hidden />
-        <div>
-          <div className="app-sidebar-title">FRUK</div>
-          <div className="app-sidebar-sub text-muted small">Operasi bazaar</div>
-        </div>
-      </div>
-
       <nav className="app-sidebar-nav px-2 pb-4 flex-grow-1 overflow-auto">
         <div className="app-nav-section">Umum</div>
         <NavLink end to="/dashboard" className={linkClass} onClick={closeIfMobile}>
@@ -114,7 +106,7 @@ export default function AppSidebar({ open }) {
         {showAdminNav && (
           <>
             <div className="app-nav-section mt-3">Admin</div>
-            <NavLink to="/data-supplier" className={linkClass} onClick={closeIfMobile}>
+            <NavLink to="/master-supplier" className={linkClass} onClick={closeIfMobile}>
               <Users size={18} aria-hidden />
               <span>Master data supplier</span>
             </NavLink>
@@ -144,7 +136,7 @@ export default function AppSidebar({ open }) {
               <ShoppingCart size={18} aria-hidden />
               <span>Produk saya</span>
             </NavLink>
-            <NavLink to="/data-supplier" className={linkClass} onClick={closeIfMobile}>
+            <NavLink to="/master-supplier" className={linkClass} onClick={closeIfMobile}>
               <Users size={18} aria-hidden />
               <span>Direktori supplier</span>
             </NavLink>

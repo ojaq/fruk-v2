@@ -44,12 +44,11 @@ const MasterSupplier = () => {
     const all = []
     Object.entries(productData).forEach(([username, items]) => {
       const userObj = registeredUsers.find(u => u.name === username)
-      if (!userObj) return
       items.forEach((item, i) => {
         if (item.aktif) {
           all.push({
             ...item,
-            namaSupplier: item.namaSupplier || userObj.profile?.namaSupplier || userObj.name,
+            namaSupplier: item.namaSupplier || userObj?.profile?.namaSupplier || userObj?.name || username,
             namaBank: item.namaBank,
             namaPenerima: item.namaPenerima,
             noRekening: item.noRekening,
@@ -233,7 +232,7 @@ const MasterSupplier = () => {
     },
     {
       name: 'Detail Produk',
-      selector: row => {return `${row.jenisProduk} ${row.ukuran} ${row.satuan}`},
+      selector: row => { return `${row.jenisProduk} ${row.ukuran} ${row.satuan}` },
       sortable: true,
       wrap: true
     },
@@ -246,7 +245,6 @@ const MasterSupplier = () => {
         return `Rp${adjustedValue.toLocaleString('id-ID', { maximumFractionDigits: 0 })}`
       },
       sortable: true,
-      width: "120px",
       wrap: true
     },
     {
@@ -262,28 +260,28 @@ const MasterSupplier = () => {
       wrap: true
     },
     { name: 'Keterangan', selector: row => row.keterangan || '-', wrap: true },
-    { name: 'Bank', selector: row => row.namaBank || '-', wrap: true, width: "150px", },
+    { name: 'Bank', selector: row => row.namaBank || '-', wrap: true, width: "120px", },
     { name: 'Penerima', selector: row => row.namaPenerima || '-', wrap: true, width: "150px", },
     { name: 'No Rekening', selector: row => row.noRekening || '-', wrap: true, width: "150px", },
     ...(user?.role === 'admin' || user?.role === 'dev' ? [
-    {
-      name: 'Aksi',
-      cell: (row, i) => (
-        <>
-          <Button size="sm" color={row.aktif ? "success" : "danger"} className="me-2" onClick={() => toggleAktif(row)} disabled={loading}>
-            {row.aktif ? <Check size={16} /> : <X size={16} />}
-          </Button>
-          <Button size="sm" color="warning" className="me-2" onClick={() => handleEdit(row)} disabled={loading}>
-            <Edit size={16} />
-          </Button>
-          <Button size="sm" color="danger" onClick={() => handleDelete(row)} disabled={loading}>
-            <Trash2 size={16} />
-          </Button>
-        </>
-      ),
-      width: '150px',
-      wrap: true
-    }] : [])
+      {
+        name: 'Aksi',
+        cell: (row, i) => (
+          <>
+            <Button size="sm" color={row.aktif ? "success" : "danger"} className="me-2" onClick={() => toggleAktif(row)} disabled={loading}>
+              {row.aktif ? <Check size={16} /> : <X size={16} />}
+            </Button>
+            <Button size="sm" color="warning" className="me-2" onClick={() => handleEdit(row)} disabled={loading}>
+              <Edit size={16} />
+            </Button>
+            <Button size="sm" color="danger" onClick={() => handleDelete(row)} disabled={loading}>
+              <Trash2 size={16} />
+            </Button>
+          </>
+        ),
+        width: '150px',
+        wrap: true
+      }] : [])
   ]
 
   const supplierOptions = [...new Set(combinedData.map(d => d.namaSupplier))].map(s => ({ label: s, value: s }))
@@ -304,12 +302,12 @@ const MasterSupplier = () => {
 
   return (
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
-      <Row className="mb-3">
-        <Col xs="12" md="6">
+      <Row>
+        <Col md="6">
           <h4>Master Data Supplier</h4>
         </Col>
-        <Col xs="12" md="6" className="text-end mt-2 mt-md-0">
-          <Button color="danger" className="me-3" onClick={() => {
+        <Col md="6" className="text-end">
+          <Button color="danger" onClick={() => {
             setSearchText('')
             setFilterSupplier(null)
             setFilterJenis(null)
@@ -365,135 +363,135 @@ const MasterSupplier = () => {
 
       {editModal && (
         <Modal isOpen={editModal} toggle={() => setEditModal(!editModal)} centered size="lg">
-        <ModalHeader toggle={() => setEditModal(!editModal)}>
-          {editIndex !== null ? 'Edit Produk' : 'Tambah Produk'}
-        </ModalHeader>
-        <ModalBody>
-          <Row className="mb-2">
-            <Col xs="12" sm="6" md="12" className="mb-2 mb-md-3">
-              <Label>Nama Produk *</Label>
-              <div style={{ position: 'relative' }}>
-                <Input
-                  value={editForm.namaProduk}
-                  onChange={e => {
-                    setEditForm(f => ({ ...f, namaProduk: e.target.value }))
-                    setShowNamaSuggestions(true)
-                  }}
-                  onFocus={() => setShowNamaSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowNamaSuggestions(false), 150)}
-                  disabled={loading}
-                  placeholder="Masukkan nama produk"
-                />
+          <ModalHeader toggle={() => setEditModal(!editModal)}>
+            {editIndex !== null ? 'Edit Produk' : 'Tambah Produk'}
+          </ModalHeader>
+          <ModalBody>
+            <Row className="mb-2">
+              <Col xs="12" sm="6" md="12" className="mb-2 mb-md-3">
+                <Label>Nama Produk *</Label>
+                <div style={{ position: 'relative' }}>
+                  <Input
+                    value={editForm.namaProduk}
+                    onChange={e => {
+                      setEditForm(f => ({ ...f, namaProduk: e.target.value }))
+                      setShowNamaSuggestions(true)
+                    }}
+                    onFocus={() => setShowNamaSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowNamaSuggestions(false), 150)}
+                    disabled={loading}
+                    placeholder="Masukkan nama produk"
+                  />
 
-                {showNamaSuggestions &&
-                  editForm.namaProduk &&
-                  filteredNamaProduk.length > 0 && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        width: '100%',
-                        background: '#fff',
-                        border: '1px solid #ddd',
-                        borderTop: 'none',
-                        zIndex: 1000,
-                        maxHeight: '200px',
-                        overflowY: 'auto'
-                      }}
-                    >
-                      {filteredNamaProduk.map((n, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            padding: '8px',
-                            cursor: 'pointer'
-                          }}
-                          onMouseDown={() => {
-                            setEditForm(f => ({ ...f, namaProduk: n }))
-                            setShowNamaSuggestions(false)
-                          }}
-                        >
-                          {n}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-              </div>
-            </Col>
-            <Col xs="12" sm="6" md="4" className="mb-2 mb-md-3">
-              <Label>Jenis Produk *</Label>
-              <Input
-                type="select"
-                value={editForm.jenisProduk}
-                onChange={e => setEditForm(f => ({ ...f, jenisProduk: e.target.value }))}
-              >
-                <option value="">Pilih Jenis</option>
-                <option value="Makanan">Makanan</option>
-                <option value="Minuman">Minuman</option>
-                <option value="Frozen Food">Frozen Food</option>
-                <option value="Toiletries">Toiletries</option>
-                <option value="Buku">Buku</option>
-                <option value="Pakaian">Pakaian</option>
-                <option value="Kebutuhan Rumah Tangga">Kebutuhan Rumah Tangga</option>
-                <option value="Mainan">Mainan</option>
-              </Input>
-            </Col>
-            <Col xs="6" sm="3" md="2" className="mb-2 mb-md-3">
-              <Label>Ukuran *</Label>
-              <Input type="number" value={editForm.ukuran} onChange={e => setEditForm({ ...editForm, ukuran: e.target.value })} />
-            </Col>
-            <Col xs="6" sm="3" md="2" className="mb-2 mb-md-3">
-              <Label>Satuan *</Label>
-              <Input value={editForm.satuan} onChange={e => setEditForm({ ...editForm, satuan: e.target.value })} />
-            </Col>
-            <Col xs="6" sm="3" md="2" className="mb-2 mb-md-3">
-              <Label>HPP *</Label>
-              <Input type="number" value={editForm.hpp} onChange={e => setEditForm({ ...editForm, hpp: e.target.value })} />
-            </Col>
-            <Col xs="6" sm="3" md="2" className="mb-2 mb-md-3">
-              <Label>HJK *</Label>
-              <Input type="number" value={editForm.hjk} onChange={e => setEditForm({ ...editForm, hjk: e.target.value })} />
-            </Col>
-            <Col xs="12" md="12" className="mb-2 mb-md-2">
-              <Label>Keterangan</Label>
-              <Input type="textarea" value={editForm.keterangan} onChange={e => setEditForm({ ...editForm, keterangan: e.target.value })} />
-            </Col>
-            <Col xs="12" md="12">
-              <Label>Gambar Produk</Label>
-              <FilePond
-                files={file}
-                onupdatefiles={setFile}
-                allowMultiple={false}
-                maxFiles={1}
-                name="image"
-                maxFileSize="25MB"
-                acceptedFileTypes={['image/jpeg', 'image/png', 'image/svg+xml']}
-                labelIdle={`<span class="text-center" style="cursor: pointer;">
+                  {showNamaSuggestions &&
+                    editForm.namaProduk &&
+                    filteredNamaProduk.length > 0 && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          width: '100%',
+                          background: '#fff',
+                          border: '1px solid #ddd',
+                          borderTop: 'none',
+                          zIndex: 1000,
+                          maxHeight: '200px',
+                          overflowY: 'auto'
+                        }}
+                      >
+                        {filteredNamaProduk.map((n, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              padding: '8px',
+                              cursor: 'pointer'
+                            }}
+                            onMouseDown={() => {
+                              setEditForm(f => ({ ...f, namaProduk: n }))
+                              setShowNamaSuggestions(false)
+                            }}
+                          >
+                            {n}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                </div>
+              </Col>
+              <Col xs="12" sm="6" md="4" className="mb-2 mb-md-3">
+                <Label>Jenis Produk *</Label>
+                <Input
+                  type="select"
+                  value={editForm.jenisProduk}
+                  onChange={e => setEditForm(f => ({ ...f, jenisProduk: e.target.value }))}
+                >
+                  <option value="">Pilih Jenis</option>
+                  <option value="Makanan">Makanan</option>
+                  <option value="Minuman">Minuman</option>
+                  <option value="Frozen Food">Frozen Food</option>
+                  <option value="Toiletries">Toiletries</option>
+                  <option value="Buku">Buku</option>
+                  <option value="Pakaian">Pakaian</option>
+                  <option value="Kebutuhan Rumah Tangga">Kebutuhan Rumah Tangga</option>
+                  <option value="Mainan">Mainan</option>
+                </Input>
+              </Col>
+              <Col xs="6" sm="3" md="2" className="mb-2 mb-md-3">
+                <Label>Ukuran *</Label>
+                <Input type="number" value={editForm.ukuran} onChange={e => setEditForm({ ...editForm, ukuran: e.target.value })} />
+              </Col>
+              <Col xs="6" sm="3" md="2" className="mb-2 mb-md-3">
+                <Label>Satuan *</Label>
+                <Input value={editForm.satuan} onChange={e => setEditForm({ ...editForm, satuan: e.target.value })} />
+              </Col>
+              <Col xs="6" sm="3" md="2" className="mb-2 mb-md-3">
+                <Label>HPP *</Label>
+                <Input type="number" value={editForm.hpp} onChange={e => setEditForm({ ...editForm, hpp: e.target.value })} />
+              </Col>
+              <Col xs="6" sm="3" md="2" className="mb-2 mb-md-3">
+                <Label>HJK *</Label>
+                <Input type="number" value={editForm.hjk} onChange={e => setEditForm({ ...editForm, hjk: e.target.value })} />
+              </Col>
+              <Col xs="12" md="12" className="mb-2 mb-md-2">
+                <Label>Keterangan</Label>
+                <Input type="textarea" value={editForm.keterangan} onChange={e => setEditForm({ ...editForm, keterangan: e.target.value })} />
+              </Col>
+              <Col xs="12" md="12">
+                <Label>Gambar Produk</Label>
+                <FilePond
+                  files={file}
+                  onupdatefiles={setFile}
+                  allowMultiple={false}
+                  maxFiles={1}
+                  name="image"
+                  maxFileSize="25MB"
+                  acceptedFileTypes={['image/jpeg', 'image/png', 'image/svg+xml']}
+                  labelIdle={`<span class="text-center" style="cursor: pointer;">
                   Drag & Drop your files or <span class='filepond--label-action'>Browse</span>
                   <br/>
                   <small class="text-muted d-block mb-0">Only image files (jpeg, png, svg) are allowed. </small>
                 </span>`}
-                labelFileTypeNotAllowed="File type not supported!"
-                credits={false}
-                allowImagePreview={true}
-              />
-              {editForm.imageUrl && file.length === 0 && (
-                <div className="text-center mt-2">
-                  <img src={editForm.imageUrl} alt="Preview" style={{ maxWidth: 180, maxHeight: 180, borderRadius: 8, border: '1px solid #eee' }} />
-                  <div className="text-muted small mt-1">Gambar saat ini</div>
-                </div>
-              )}
-            </Col>
-          </Row>
-        </ModalBody>
-        <ModalFooter>
-          <Button color="primary" onClick={handleEditSave}>
-            Update
-          </Button>
-          <Button color="secondary" onClick={() => setEditModal(false)}>
-            Batal
-          </Button>
-        </ModalFooter>
-      </Modal>
+                  labelFileTypeNotAllowed="File type not supported!"
+                  credits={false}
+                  allowImagePreview={true}
+                />
+                {editForm.imageUrl && file.length === 0 && (
+                  <div className="text-center mt-2">
+                    <img src={editForm.imageUrl} alt="Preview" style={{ maxWidth: 180, maxHeight: 180, borderRadius: 8, border: '1px solid #eee' }} />
+                    <div className="text-muted small mt-1">Gambar saat ini</div>
+                  </div>
+                )}
+              </Col>
+            </Row>
+          </ModalBody>
+          <ModalFooter>
+            <Button color="primary" onClick={handleEditSave}>
+              Update
+            </Button>
+            <Button color="secondary" onClick={() => setEditModal(false)}>
+              Batal
+            </Button>
+          </ModalFooter>
+        </Modal>
       )}
 
       <Modal isOpen={imagePreview.open} toggle={() => setImagePreview({ open: false, url: '' })} centered size="xl">

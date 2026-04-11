@@ -387,7 +387,7 @@ const Dashboard = () => {
               <Users className="text-app-primary mb-2" size={22} />
               <h6>Master supplier</h6>
               <p className="hint">Kelola direktori supplier dan produk master.</p>
-              <Button color="primary" size="sm" onClick={() => navigate('/data-supplier')}>
+              <Button color="primary" size="sm" onClick={() => navigate('/master-supplier')}>
                 Buka
               </Button>
             </div>
@@ -429,7 +429,7 @@ const Dashboard = () => {
               <Users className="text-app-primary mb-2" size={22} />
               <h6>Direktori supplier</h6>
               <p className="hint">Lihat supplier & produk lain (read-only).</p>
-              <Button color="primary" size="sm" onClick={() => navigate('/data-supplier')}>
+              <Button color="primary" size="sm" onClick={() => navigate('/master-supplier')}>
                 Buka
               </Button>
             </div>

@@ -27,7 +27,7 @@ const AppRoutes = () => {
 
       <Route element={<ProtectedLayout />}>
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/data-supplier" element={<MasterSupplier />} />
+        <Route path="/master-supplier" element={<MasterSupplier />} />
         <Route path="/data-supplier/:user" element={<DataSupplier />} />
         <Route path="/week/:num?" element={<Week />} />
         <Route path="/weekoffline/:num?" element={<WeekOffline />} />
