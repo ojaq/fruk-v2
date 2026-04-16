@@ -21,7 +21,7 @@ import { useAppUi } from '../../context/AppUiContext'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Swal from 'sweetalert2'
 import { supabase } from '../../supabaseClient'
-import logo from '/logo.png'
+import logo from '/logo.jpg'
 
 const selectCompact = {
   control: (base) => ({
@@ -82,17 +82,17 @@ export default function TopNavBar() {
 
   const weekOptions = useMemo(() => {
     const map = new Map()
-    ;(bazaarData?.announcements || []).forEach((a) => {
-      if (!a.weekCode || a.isDeleted || a.is_deleted) return
-      const num = Number(String(a.weekCode).replace('W', ''))
-      if (!num) return
-      if (!map.has(num)) {
-        map.set(num, {
-          value: num,
-          label: `${a.weekCode} – ${a.title}`
-        })
-      }
-    })
+      ; (bazaarData?.announcements || []).forEach((a) => {
+        if (!a.weekCode || a.isDeleted || a.is_deleted) return
+        const num = Number(String(a.weekCode).replace('W', ''))
+        if (!num) return
+        if (!map.has(num)) {
+          map.set(num, {
+            value: num,
+            label: `${a.weekCode} – ${a.title}`
+          })
+        }
+      })
     const sorted = Array.from(map.values()).sort((a, b) => a.value - b.value)
     return [{ value: null, label: 'Semua Minggu/Bazaar' }, ...sorted]
   }, [bazaarData])

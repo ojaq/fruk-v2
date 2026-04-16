@@ -50,10 +50,10 @@ const Login = () => {
   }
 
   const filteredUsers = users
-  .filter(u => u.role !== 'dev')
-  .filter(u =>
-    u.name.toLowerCase().includes(name.toLowerCase())
-  )
+    .filter(u => u.role !== 'dev')
+    .filter(u =>
+      u.name.toLowerCase().includes(name.toLowerCase())
+    )
 
   return (
     <div className="auth-page">
@@ -62,9 +62,9 @@ const Login = () => {
           <Col md="10" lg="8" xl="6">
             <div className="d-flex justify-content-center mb-2">
               <img
-                src="./logo.jpeg"
+                src="./logo.jpg"
                 alt="logo"
-                style={{ height: '200px' }}
+                style={{ height: '300px' }}
               />
             </div>
 
@@ -82,52 +82,52 @@ const Login = () => {
                   <FormGroup>
                     <Label>Nama Supplier</Label>
                     <div style={{ position: 'relative' }}>
-                    <Input
-                      value={name}
-                      onChange={(e) => {
-                        setName(e.target.value)
-                        setShowSuggestions(true)
-                      }}
-                      onFocus={() => setShowSuggestions(true)}
-                      onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-                      invalid={!!error}
-                      placeholder="Masukkan nama supplier"
-                      disabled={loading}
-                    />
-
-                    {showSuggestions && name && filteredUsers.length > 0 && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          width: '100%',
-                          background: '#fff',
-                          border: '1px solid #ddd',
-                          borderTop: 'none',
-                          zIndex: 1000,
-                          maxHeight: '200px',
-                          overflowY: 'auto'
+                      <Input
+                        value={name}
+                        onChange={(e) => {
+                          setName(e.target.value)
+                          setShowSuggestions(true)
                         }}
-                      >
-                        {filteredUsers.map(u => (
-                          <div
-                            key={u.id}
-                            style={{
-                              padding: '8px',
-                              cursor: 'pointer'
-                            }}
-                            onMouseDown={() => {
-                              setName(u.name)
-                              setShowSuggestions(false)
-                            }}
-                          >
-                            {u.name}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                        onFocus={() => setShowSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                        invalid={!!error}
+                        placeholder="Masukkan nama supplier"
+                        disabled={loading}
+                      />
 
-                    {error && <FormFeedback>{error}</FormFeedback>}
-                  </div>
+                      {showSuggestions && name && filteredUsers.length > 0 && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            width: '100%',
+                            background: '#fff',
+                            border: '1px solid #ddd',
+                            borderTop: 'none',
+                            zIndex: 1000,
+                            maxHeight: '200px',
+                            overflowY: 'auto'
+                          }}
+                        >
+                          {filteredUsers.map(u => (
+                            <div
+                              key={u.id}
+                              style={{
+                                padding: '8px',
+                                cursor: 'pointer'
+                              }}
+                              onMouseDown={() => {
+                                setName(u.name)
+                                setShowSuggestions(false)
+                              }}
+                            >
+                              {u.name}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {error && <FormFeedback>{error}</FormFeedback>}
+                    </div>
                     {error && <FormFeedback>{error}</FormFeedback>}
                   </FormGroup>
                   <Button color="primary" type="submit" block disabled={loading}>

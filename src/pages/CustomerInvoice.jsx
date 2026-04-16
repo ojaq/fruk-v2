@@ -79,7 +79,7 @@ const CustomerInvoice = () => {
     const dueStr = dueDate.toISOString().split('T')[0]
 
     const doc = new jsPDF('p', 'mm', 'a4')
-    const logoUrl = '/logo.jpeg'
+    const logoUrl = '/logo.jpg'
 
     const img = new Image()
     img.src = logoUrl

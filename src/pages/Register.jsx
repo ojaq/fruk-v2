@@ -61,9 +61,9 @@ const Register = () => {
           <Col md="10" lg="8" xl="6">
             <div className="d-flex justify-content-center mb-3">
               <img
-                src="./logo.jpeg"
+                src="./logo.jpg"
                 alt="logo"
-                style={{ height: '200px' }}
+                style={{ height: '300px' }}
               />
             </div>
             <Card>
