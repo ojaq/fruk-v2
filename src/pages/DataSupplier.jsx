@@ -540,6 +540,7 @@ const DataSupplier = () => {
                 <option value="Pakaian">Pakaian</option>
                 <option value="Kebutuhan Rumah Tangga">Kebutuhan Rumah Tangga</option>
                 <option value="Mainan">Mainan</option>
+                <option value="Aksesoris">Aksesoris</option>
               </Input>
             </Col>
             <Col xs="6" sm="3" md="2" className="mb-2 mb-md-3">
