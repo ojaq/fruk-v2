@@ -81,6 +81,26 @@ const WeekOffline = () => {
     }
   }
 
+  const usedStockMap = useMemo(() => {
+    const map = {}
+
+    ;(orders || []).forEach(o => {
+      if (o.channel !== 'offline') return
+      const key = o.registration_product_id
+      if (!map[key]) map[key] = 0
+      map[key] += Number(o.jumlah || 0)
+    })
+
+    return map
+  }, [orders])
+
+  const isStockExceeded = useMemo(() => {
+    if (!form.produkLabel) return false
+    const { remainingStock, totalStock } = form.produkLabel.data
+    if (!totalStock) return false
+    return Number(form.jumlah || 0) > remainingStock
+  }, [form.jumlah, form.produkLabel])
+
   useEffect(() => {
     if (isAllWeek) {
       const sorted = (orders || [])
@@ -101,24 +121,28 @@ const WeekOffline = () => {
   useEffect(() => {
     if (currentAnnouncement) {
 
-      const opts = allowedProducts.map(prod => ({
-        label: `${prod.namaProduk || prod.nama_produk || 'N/A'} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
-        value: prod.registrationProductId,
-        data: {
-          hjk: prod.hjk,
-          hpp: prod.hpp,
-          namaSupplier: prod.owner,
-          namaProduk: prod.namaProduk || prod.nama_produk,
-          jenisProduk: prod.jenisProduk || prod.jenis_produk,
-          ukuran: prod.ukuran,
-          satuan: prod.satuan,
-          keterangan: prod.keterangan,
-          imageUrl: prod.imageUrl || prod.image_url
-        },
-        registrationProductId: prod.registrationProductId,
-        registrationId: prod.registrationId,
-        supplierId: prod.supplierId
-      }))
+      const opts = allowedProducts.map(prod => {
+        const totalStock = prod.offline_stock ?? 0
+        const usedStock = usedStockMap[prod.registrationProductId] || 0
+        const remaining = totalStock - usedStock
+        const baseLabel = `${prod.namaProduk || prod.nama_produk || 'N/A'} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim()
+        const stockText = totalStock > 0 ? `${remaining}/${totalStock} stok tersisa` : 'stok tidak terbatas'
+
+        return {
+          label: baseLabel,
+          value: prod.registrationProductId,
+          baseLabel,
+          stockText,
+          data: {
+            ...prod,
+            remainingStock: remaining,
+            totalStock
+          },
+          registrationProductId: prod.registrationProductId,
+          registrationId: prod.registrationId,
+          supplierId: prod.supplierId
+        }
+      })
       setProdukOptions(prev => {
         const same =
           prev.length === opts.length &&
@@ -188,6 +212,10 @@ const WeekOffline = () => {
         return
       }
 
+      if (isStockExceeded) {
+        Swal.fire('Error', 'Stok tidak cukup', 'error')
+        return
+      }
 
       const weekId = weeks.find(w => w.week_code === sheetName)?.id
       if (!weekId) {
@@ -421,7 +449,7 @@ const WeekOffline = () => {
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
       <Row className="mb-3">
         <Col xs="12" md="6">
-          <h4>{isAllWeek ? 'Semua Minggu' : `Minggu ${activeWeek}`}</h4>
+          <h4>{isAllWeek ? 'Semua Minggu - Offline' : `Minggu ${activeWeek} - Offline`}</h4>
         </Col>
         <Col xs="12" md="6" className="text-end mt-2 mt-md-0 d-flex flex-wrap gap-2 justify-content-md-end">
           <Button
@@ -565,6 +593,12 @@ const WeekOffline = () => {
                   placeholder="Pilih produk"
                   isSearchable
                   isDisabled={loading || isAllWeek}
+                  formatOptionLabel={(option) => (
+                    <div>
+                      <div>{option.baseLabel}</div>
+                      <small className="text-muted">{option.stockText}</small>
+                    </div>
+                  )}
                 />
                 {form.produkLabel?.data?.keterangan && (
                   <small className="text-muted">Keterangan: {form.produkLabel.data.keterangan}</small>
@@ -614,7 +648,14 @@ const WeekOffline = () => {
                   value={form.jumlah}
                   onChange={(e) => handleJumlahChange(e.target.value)}
                   disabled={loading || isAllWeek}
+                  invalid={isStockExceeded}
                 />
+
+                {isStockExceeded && (
+                  <div className="text-danger small">
+                    stok tidak cukup, sisa {form.produkLabel?.data?.remainingStock}
+                  </div>
+                )}
               </Col>
               <Col xs="6" md="8" className="mb-2">
                 <Label>Total Bayar</Label>

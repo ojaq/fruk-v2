@@ -201,10 +201,10 @@ export default function TopNavBar() {
                   setCurrentWeek(week)
 
                   const path = location.pathname
-                  if (path.startsWith('/week')) {
-                    navigate(week ? `/week/${week}` : '/week')
-                  } else if (path.startsWith('/weekoffline')) {
+                  if (path.startsWith('/weekoffline')) {
                     navigate(week ? `/weekoffline/${week}` : '/weekoffline')
+                  } else if (path.startsWith('/week')) {
+                    navigate(week ? `/week/${week}` : '/week')
                   } else if (path.startsWith('/customer-invoice')) {
                     navigate(week ? `/customer-invoice/${week}` : '/customer-invoice')
                   } else if (path.startsWith('/supplier-invoice')) {
@@ -268,10 +268,10 @@ export default function TopNavBar() {
             setCurrentWeek(week)
 
             const path = location.pathname
-            if (path.startsWith('/week')) {
-              navigate(week ? `/week/${week}` : '/week')
-            } else if (path.startsWith('/weekoffline')) {
+            if (path.startsWith('/weekoffline')) {
               navigate(week ? `/weekoffline/${week}` : '/weekoffline')
+            } else if (path.startsWith('/week')) {
+              navigate(week ? `/week/${week}` : '/week')
             } else if (path.startsWith('/customer-invoice')) {
               navigate(week ? `/customer-invoice/${week}` : '/customer-invoice')
             } else if (path.startsWith('/supplier-invoice')) {
