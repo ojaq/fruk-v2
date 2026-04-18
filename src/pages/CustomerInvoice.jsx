@@ -3,10 +3,12 @@ import { useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useAppUi } from '../context/AppUiContext'
 import DataTable from 'react-data-table-component'
-import { Button, Row, Col, Card, CardHeader, CardBody, Input } from 'reactstrap'
+import { Button, Row, Col, Card, CardHeader, CardBody, Input, Modal, ModalBody, ModalFooter, ModalHeader, Label, FormGroup, CardFooter } from 'reactstrap'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import Select from 'react-select'
+import { supabase } from '../supabaseClient'
+import Swal from 'sweetalert2'
 
 const CustomerInvoice = () => {
   const { num } = useParams()
@@ -16,6 +18,10 @@ const CustomerInvoice = () => {
   const [grouped, setGrouped] = useState([])
   const [searchText, setSearchText] = useState('')
   const [selectedPemesan, setSelectedPemesan] = useState(null)
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
+  const [selectedInvoiceRow, setSelectedInvoiceRow] = useState(null)
+  const [invoiceMethod, setInvoiceMethod] = useState('transfer')
+  const [invoiceLoading, setInvoiceLoading] = useState(false)
 
   const highlightText = (text, search) => {
     if (!search) return text
@@ -24,7 +30,7 @@ const CustomerInvoice = () => {
   }
 
   useEffect(() => {
-    const relevant = (orders || []).filter(o => o.channel === 'online')
+    const relevant = (orders || []).filter(o => o.channel === 'online' || (o.channel === 'offline' && o.status === 'open_bill'))
       .filter(o => {
         if (!activeWeek) return true
         const weekCode = weeks.find(w => w.id === o.week_id)?.week_code
@@ -35,18 +41,25 @@ const CustomerInvoice = () => {
     relevant.forEach(o => {
       const prod = o.registration_products || {}
       const label = `${prod.nama_produk || ''} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim()
-      const key = `${o.pemesan}|${label}|${o.catatan || ''}`
+      const sourceLabel = o.channel === 'offline'
+        ? (o.status === 'open_bill' ? 'Offline Open Bill' : 'Offline')
+        : 'Online'
+      const key = `${o.pemesan}|${sourceLabel}|${label}|${o.catatan || ''}`
       const qty = Number(o.jumlah)
       const bayarRaw = Number(o.bayar)
       const bayar = bayarRaw > 0 && bayarRaw < 1000 ? bayarRaw * 1000 : bayarRaw
 
       const row = {
         pemesan: o.pemesan,
+        sourceLabel,
         produkLabel: label,
         catatan: o.catatan || '',
         jumlah: qty,
         bayar,
-        week: weeks.find(w => w.id === o.week_id)?.week_code || ''
+        week: weeks.find(w => w.id === o.week_id)?.week_code || '',
+        orderIds: [o.id],
+        rawStatus: o.status,
+        rawChannel: o.channel
       }
 
       if (!map[key]) {
@@ -54,6 +67,7 @@ const CustomerInvoice = () => {
       } else {
         map[key].jumlah += qty
         map[key].bayar += bayar
+        map[key].orderIds = [...new Set([...(map[key].orderIds || []), ...row.orderIds])]
       }
     })
 
@@ -67,11 +81,40 @@ const CustomerInvoice = () => {
     setGrouped(Object.entries(byPemesan).map(([pemesan, list], i) => {
       const totalQty = list.reduce((a, b) => a + b.jumlah, 0)
       const totalHarga = list.reduce((a, b) => a + b.bayar, 0)
-      return { id: i + 1, pemesan, items: list, totalQty, totalHarga }
+      const sourceSet = [...new Set(list.map(item => item.sourceLabel))].filter(Boolean)
+      const sourceLabel = sourceSet.length === 1 ? sourceSet[0] : sourceSet.join(', ')
+      return { id: i + 1, pemesan, sourceLabel, items: list, totalQty, totalHarga }
     }).sort((a, b) => a.pemesan.toLowerCase().localeCompare(b.pemesan.toLowerCase())))
   }, [orders, weeks, activeWeek])
 
-  const sendInvoice = (pemesan, items, weekNum) => {
+  const handleInvoiceMarkLunas = async () => {
+    if (!selectedInvoiceRow || !selectedInvoiceRow.orderIds?.length) return
+
+    setInvoiceLoading(true)
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: 'lunas',
+          method: invoiceMethod
+        })
+        .in('id', selectedInvoiceRow.orderIds)
+
+      if (error) throw error
+
+      Swal.fire('Berhasil', 'Open bill berhasil diubah menjadi lunas.', 'success').then(() => {
+        window.location.reload()
+      })
+    } catch (error) {
+      console.error('Error updating invoice status:', error)
+      Swal.fire('Error', 'Gagal mengubah status invoice.', 'error')
+    } finally {
+      setInvoiceLoading(false)
+    }
+  }
+
+  const sendInvoice = (pemesan, items, weekNum, sourceLabel) => {
+    const weekLabel = weekNum || activeWeek
     const date = new Date()
     const todayStr = date.toISOString().split('T')[0]
     const dueDate = new Date(date)
@@ -88,7 +131,7 @@ const CustomerInvoice = () => {
 
       doc.setFontSize(26)
       doc.setFont('helvetica', 'bold')
-      const title = `Customer Invoice - ${pemesan} ${weekNum ? `Minggu ke-${weekNum}` : 'Semua Minggu'}`
+      const title = `Customer Invoice - ${pemesan}${sourceLabel ? ` (${sourceLabel})` : ''} ${weekLabel ? `Minggu ke-${weekLabel}` : 'Semua Minggu'}`
       const wrapped = doc.splitTextToSize(title, 120)
 
       wrapped.forEach((line, i) => {
@@ -333,9 +376,9 @@ const CustomerInvoice = () => {
       {filteredGrouped.map(group => (
         <Card key={group.id} className="mb-3">
           <CardHeader>
-            <h5>{group.pemesan}</h5>
+            <h5>{group.pemesan}{group.sourceLabel ? ` (${group.sourceLabel})` : ''}</h5>
           </CardHeader>
-          <CardBody className="p-0">
+          <CardBody className="mb-2 p-0">
             <div className="overflow-auto">
               <DataTable
                 columns={[
@@ -395,6 +438,28 @@ const CustomerInvoice = () => {
                       )
                     },
                     wrap: true
+                  },
+                  {
+                    name: 'Aksi',
+                    cell: row => (
+                      row.sourceLabel === 'Offline Open Bill'
+                        ? (
+                          <Button
+                            color="warning"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedInvoiceRow(row)
+                              setInvoiceMethod('transfer')
+                              setInvoiceModalOpen(true)
+                            }}
+                          >
+                            Tandai Lunas
+                          </Button>
+                        )
+                        : '-'
+                    ),
+                    width: '140px',
+                    wrap: true
                   }
                 ]}
                 data={group.items}
@@ -402,20 +467,49 @@ const CustomerInvoice = () => {
                 responsive
               />
             </div>
-            <Row className="p-3">
+          </CardBody>
+          <CardFooter className='py-3'>
+            <Row>
               <Col xs="12" md="6" className="text-start mb-2 mb-md-0">
                 <strong>Total Qty:</strong> {group.totalQty} &nbsp; | &nbsp;
                 <strong>Total:</strong> Rp{group.totalHarga.toLocaleString()}
               </Col>
               <Col xs="12" md="6" className="text-end">
-                <Button color="primary" size="sm" onClick={() => sendInvoice(group.pemesan, group.items, num)}>
+                <Button color="primary" size="sm" onClick={() => sendInvoice(group.pemesan, group.items, activeWeek, group.sourceLabel)}>
                   Generate Invoice {group.pemesan}
                 </Button>
               </Col>
             </Row>
-          </CardBody>
+          </CardFooter>
         </Card>
       ))}
+      <Modal isOpen={invoiceModalOpen} toggle={() => setInvoiceModalOpen(false)} centered>
+        <ModalHeader toggle={() => setInvoiceModalOpen(false)}>Ubah Open Bill menjadi Lunas</ModalHeader>
+        <ModalBody>
+          <p>Ubah open bill offline menjadi lunas untuk <strong>{selectedInvoiceRow?.pemesan}</strong>.</p>
+          <FormGroup>
+            <Label>Method pembayaran</Label>
+            <Select
+              options={[
+                { label: 'Transfer', value: 'transfer' },
+                { label: 'QRIS', value: 'qris' },
+                { label: 'Cash', value: 'cash' }
+              ]}
+              value={{ label: invoiceMethod.charAt(0).toUpperCase() + invoiceMethod.slice(1), value: invoiceMethod }}
+              onChange={(option) => setInvoiceMethod(option?.value || 'transfer')}
+              isClearable={false}
+            />
+          </FormGroup>
+        </ModalBody>
+        <ModalFooter>
+          <Button color="secondary" onClick={() => setInvoiceModalOpen(false)} disabled={invoiceLoading}>
+            Batal
+          </Button>
+          <Button color="primary" onClick={handleInvoiceMarkLunas} disabled={invoiceLoading}>
+            {invoiceLoading ? 'Menyimpan…' : 'Simpan'}
+          </Button>
+        </ModalFooter>
+      </Modal>
     </div>
   )
 }

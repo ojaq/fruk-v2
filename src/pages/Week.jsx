@@ -243,7 +243,8 @@ const Week = () => {
           catatan: form.catatan || null,
           bayar: parseFloat(form.bayar) || null,
           supplierId: produkLabel.supplierId || undefined,
-          status: 'online'
+          status: null,
+          method: null
         })
         Swal.fire('Berhasil', 'Order berhasil ditambahkan', 'success')
       }

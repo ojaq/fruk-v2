@@ -74,7 +74,7 @@ const WeekOffline = () => {
     return {
       ...o,
       produkLabel: `${prod.nama_produk || ''} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
-      registrationProductId: prod.id,
+      registrationProductId: o.registration_product_id,
       registrationId: o.registration_id,
       supplierId: o.supplier_id,
       week: weekCode
@@ -84,12 +84,12 @@ const WeekOffline = () => {
   const usedStockMap = useMemo(() => {
     const map = {}
 
-    ;(orders || []).forEach(o => {
-      if (o.channel !== 'offline') return
-      const key = o.registration_product_id
-      if (!map[key]) map[key] = 0
-      map[key] += Number(o.jumlah || 0)
-    })
+      ; (orders || []).forEach(o => {
+        if (o.channel !== 'offline') return
+        const key = o.registration_product_id
+        if (!map[key]) map[key] = 0
+        map[key] += Number(o.jumlah || 0)
+      })
 
     return map
   }, [orders])
@@ -120,11 +120,21 @@ const WeekOffline = () => {
 
   useEffect(() => {
     if (currentAnnouncement) {
+      const editingOrder = editingOrderId ? orders.find(o => o.id === editingOrderId) : null
+      const editingQty = Number(editingOrder?.jumlah || 0)
+      const editingProductId = editingOrder?.registration_product_id
 
       const opts = allowedProducts.map(prod => {
         const totalStock = prod.offline_stock ?? 0
-        const usedStock = usedStockMap[prod.registrationProductId] || 0
+        let usedStock = usedStockMap[prod.registrationProductId] || 0
+        const isCurrentEditingProduct = editingOrderId && prod.registrationProductId === editingProductId
+
+        if (isCurrentEditingProduct) {
+          usedStock = Math.max(0, usedStock - editingQty)
+        }
+
         const remaining = totalStock - usedStock
+        const isDisabled = totalStock > 0 && remaining <= 0 && !isCurrentEditingProduct
         const baseLabel = `${prod.namaProduk || prod.nama_produk || 'N/A'} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim()
         const stockText = totalStock > 0 ? `${remaining}/${totalStock} stok tersisa` : 'stok tidak terbatas'
 
@@ -133,6 +143,7 @@ const WeekOffline = () => {
           value: prod.registrationProductId,
           baseLabel,
           stockText,
+          isDisabled,
           data: {
             ...prod,
             remainingStock: remaining,
@@ -143,13 +154,7 @@ const WeekOffline = () => {
           supplierId: prod.supplierId
         }
       })
-      setProdukOptions(prev => {
-        const same =
-          prev.length === opts.length &&
-          prev.every((p, i) => p.value === opts[i].value)
-
-        return same ? prev : opts
-      })
+      setProdukOptions(opts)
     } else {
       const all = []
       Object.entries(productData).forEach(([username, items]) => {
@@ -167,7 +172,19 @@ const WeekOffline = () => {
       })
       setProdukOptions(all)
     }
-  }, [productData, registeredUsers, currentAnnouncement, allowedProducts])
+  }, [productData, registeredUsers, currentAnnouncement, allowedProducts, orders, editingOrderId, usedStockMap])
+
+  useEffect(() => {
+    if (!form.produkLabel?.registrationProductId || !produkOptions.length) return
+
+    const matched = produkOptions.find(
+      option => option.registrationProductId === form.produkLabel.registrationProductId
+    )
+
+    if (matched && matched !== form.produkLabel) {
+      setForm(f => ({ ...f, produkLabel: matched }))
+    }
+  }, [produkOptions, form.produkLabel])
 
   const getAdjustedHJK = (val) => {
     const num = parseFloat(val)
@@ -176,13 +193,14 @@ const WeekOffline = () => {
   }
 
   const handleSelectProduk = option => {
+    if (option.isDisabled) return
     const harga = option.data.hjk
     const adjustedHJK = getAdjustedHJK(harga)
     setForm(f => ({
       ...f,
       produkLabel: option,
       bayar: f.jumlah ? Number(f.jumlah) * adjustedHJK : '',
-      adjustedHJK: adjustedHJK
+      adjustedHJK
     }))
   }
 
@@ -202,6 +220,29 @@ const WeekOffline = () => {
 
     try {
       const { pemesan, produkLabel, jumlah, method } = form
+      const totalStock = produkLabel?.data?.totalStock || 0
+      const currentUsed = usedStockMap[produkLabel?.registrationProductId] || 0
+      let safeUsed = currentUsed
+
+      if (editingOrderId) {
+        const existingOrder = orders.find(o => o.id === editingOrderId)
+        if (existingOrder) {
+          if (existingOrder.registration_product_id === produkLabel.registrationProductId) {
+            safeUsed = Math.max(0, currentUsed - Number(existingOrder.jumlah || 0))
+          } else {
+            safeUsed = usedStockMap[produkLabel.registrationProductId] || 0
+          }
+        }
+      }
+
+      const safeRemaining = totalStock - safeUsed
+
+      if (totalStock > 0 && Number(jumlah) > safeRemaining) {
+        Swal.fire('Error', `Stok tidak cukup (sisa ${safeRemaining})`, 'error')
+        setLoading(false)
+        return
+      }
+
       if (!pemesan || !produkLabel || !jumlah || (form.status === 'lunas' && !method)) {
         Swal.fire('Gagal', 'Semua field * wajib diisi', 'error')
         return
@@ -593,9 +634,15 @@ const WeekOffline = () => {
                   placeholder="Pilih produk"
                   isSearchable
                   isDisabled={loading || isAllWeek}
+                  isOptionDisabled={(option) => option.isDisabled}
                   formatOptionLabel={(option) => (
-                    <div>
-                      <div>{option.baseLabel}</div>
+                    <div style={{ opacity: option.isDisabled ? 0.5 : 1 }}>
+                      <div>
+                        {option.baseLabel}
+                        {option.isDisabled && (
+                          <span className="text-danger ms-2">(habis)</span>
+                        )}
+                      </div>
                       <small className="text-muted">{option.stockText}</small>
                     </div>
                   )}
@@ -675,7 +722,11 @@ const WeekOffline = () => {
             <Button color="secondary" type="button" onClick={() => setOrderModalOpen(false)}>
               Batal
             </Button>
-            <Button color="primary" type="submit" disabled={loading || isAllWeek}>
+            <Button
+              color="primary"
+              type="submit"
+              disabled={loading || isAllWeek || isStockExceeded}
+            >
               {loading ? 'Menyimpan…' : editingOrderId ? 'Simpan' : 'Tambah'}
             </Button>
           </ModalFooter>

@@ -386,8 +386,8 @@ const SupplierInvoice = () => {
           <CardHeader className="pt-3">
             <h5>{group.supplier}</h5>
           </CardHeader>
-          <CardBody className="p-0">
-            <div className="overflow-auto" style={{ minHeight: 200 }}>
+          <CardBody className="mb-2 p-0">
+            <div className="overflow-auto">
               <DataTable
                 columns={[
                   {

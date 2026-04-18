@@ -94,7 +94,7 @@ export default function AppSidebar({ open }) {
           {expandedInvoice && (
             <>
               <NavLink to="/customer-invoice" className={submenuClass} onClick={closeIfMobile}>
-                <span>Pelanggan</span>
+                <span>Customer</span>
               </NavLink>
               <NavLink to="/supplier-invoice" className={submenuClass} onClick={closeIfMobile}>
                 <span>Supplier</span>
