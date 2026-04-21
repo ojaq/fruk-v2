@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Button, Col, Input, Label, Row, Modal, ModalBody, FormGroup, Badge } from 'reactstrap'
 import DataTable from 'react-data-table-component'
 import Select from 'react-select'
 import { useAuth } from '../context/AuthContext'
+import { useAppUi } from '../context/AppUiContext'
 
 const BazaarProducts = () => {
-  const { bazaarData } = useAuth()
+  const { bazaarData, orders } = useAuth()
+  const { currentWeek } = useAppUi()
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null)
   const [participationFilter, setParticipationFilter] = useState('all')
   const [products, setProducts] = useState([])
@@ -15,21 +17,33 @@ const BazaarProducts = () => {
   const [supplierFilter, setSupplierFilter] = useState(null)
   const [jenisFilter, setJenisFilter] = useState(null)
 
-  const announcementOptions = (bazaarData.announcements || []).map(a => ({
-    label: a.title,
-    value: a.id,
-    data: a
-  }))
+  const announcementOptions = useMemo(() => (
+    (bazaarData.announcements || []).map(a => ({
+      label: a.title,
+      value: a.id,
+      data: a
+    }))
+  ), [bazaarData])
+
+  const currentWeekAnnouncement = useMemo(() => {
+    if (!currentWeek) return null
+    const weekCode = `W${currentWeek}`
+    const byStatus = (bazaarData.announcements || []).find(a => a.weekCode === weekCode && !a.isDeleted && a.status === 'active')
+    if (byStatus) return byStatus
+    return (bazaarData.announcements || []).find(a => a.weekCode === weekCode && !a.isDeleted) || null
+  }, [bazaarData, currentWeek])
+
+  const effectiveAnnouncement = selectedAnnouncement || announcementOptions.find(opt => opt.value === currentWeekAnnouncement?.id) || null
 
   useEffect(() => {
-    if (!selectedAnnouncement) {
+    if (!effectiveAnnouncement) {
       setProducts([])
       return
     }
 
     setLoading(true)
     const regs = (bazaarData.registrations || [])
-      .filter(r => r?.announcementId === selectedAnnouncement.value && r?.status === 'approved')
+      .filter(r => r?.announcementId === effectiveAnnouncement.value && r?.status === 'approved')
 
     let allProducts = []
 
@@ -69,7 +83,7 @@ const BazaarProducts = () => {
 
     setProducts(allProducts)
     setLoading(false)
-  }, [selectedAnnouncement, participationFilter, bazaarData])
+  }, [effectiveAnnouncement, participationFilter, bazaarData])
 
   const filteredProducts = products.filter(item => {
     return (
@@ -87,6 +101,90 @@ const BazaarProducts = () => {
     if (jenisFilter && item.jenisProduk !== jenisFilter.value) return false
     return true
   })
+
+  const offlineOrdersByProduct = useMemo(() => {
+    const map = new Map()
+    const announcementId = effectiveAnnouncement?.value
+    if (!announcementId) return map
+
+      ; (orders || []).forEach(order => {
+        if (order.channel !== 'offline') return
+        if (order.announcement_id !== announcementId) return
+        const productId = order.registration_product_id
+        if (!productId) return
+        const qty = Number(order.jumlah || 0)
+        if (!qty) return
+        map.set(productId, (map.get(productId) || 0) + qty)
+      })
+
+    return map
+  }, [orders, effectiveAnnouncement])
+
+  const handleExportCSV = () => {
+    const escapeCSV = (value) => {
+      if (value === undefined || value === null) return ''
+      const stringValue = String(value)
+      if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+        return `"${stringValue.replace(/"/g, '""')}"`
+      }
+      return stringValue
+    }
+
+    const formatPrice = (val) => {
+      const num = parseFloat(val)
+      if (!num || num <= 0) return ''
+      const adjusted = num < 1000 ? num * 1000 : num
+      return `Rp${adjusted.toLocaleString('id-ID', { maximumFractionDigits: 0 })}`
+    }
+
+    const headers = [
+      'Supplier',
+      'Nama Produk',
+      'Detail Produk',
+      'HPP',
+      'HJK',
+      'Sisa Offline Stock',
+      'Keterangan',
+      'Partisipasi',
+      'Gambar'
+    ]
+
+    const rows = [headers.join(',')]
+
+    filteredByDropdowns.forEach(row => {
+      const stock = Number(row.offline_stock || 0)
+      const sold = offlineOrdersByProduct.get(row.id) || 0
+      const remaining = stock > 0 ? Math.max(stock - sold, 0) : 0
+      const stockText = stock > 0 ? `${remaining}/${stock}` : String(sold)
+      const detail = `${row.jenisProduk} ${row.ukuran} ${row.satuan}`.trim()
+      const part = row.participation?.join(' & ') || ''
+      const valueRow = [
+        row.supplierName,
+        row.label || row.namaProduk || '',
+        detail,
+        formatPrice(row.hpp),
+        formatPrice(row.hjk),
+        stockText,
+        row.keterangan || '',
+        part,
+        row.imageUrl || ''
+      ]
+      rows.push(valueRow.map(escapeCSV).join(','))
+    })
+
+    const csvContent = rows.join('\n')
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    const now = new Date()
+    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`
+    link.setAttribute('download', `bazaar_products_${timestamp}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
 
   const getParticipationBadge = (types = []) => {
     return (
@@ -118,7 +216,6 @@ const BazaarProducts = () => {
       name: 'Detail Produk',
       selector: row => { return `${row.jenisProduk} ${row.ukuran} ${row.satuan}` },
       sortable: true,
-      width: "200px",
       wrap: true
     },
     {
@@ -130,7 +227,6 @@ const BazaarProducts = () => {
         return `Rp${adjustedValue.toLocaleString('id-ID', { maximumFractionDigits: 0 })}`
       },
       sortable: true,
-      width: '120px',
       wrap: true
     },
     {
@@ -142,14 +238,16 @@ const BazaarProducts = () => {
         return `Rp${adjustedValue.toLocaleString('id-ID', { maximumFractionDigits: 0 })}`
       },
       sortable: true,
-      width: '120px',
       wrap: true
     },
     {
       name: 'Offline Stock',
       selector: row => {
         if (!row.participation?.includes('offline')) return '-'
-        return row.offline_stock ?? 0
+        const sold = offlineOrdersByProduct.get(row.id) || 0
+        const stock = Number(row.offline_stock || 0)
+        const remaining = stock > 0 ? Math.max(stock - sold, 0) : 0
+        return stock ? `${remaining}/${stock}` : String(sold)
       },
       sortable: true,
       wrap: true
@@ -170,13 +268,11 @@ const BazaarProducts = () => {
           onClick={() => setImagePreview({ open: true, url: row.imageUrl })}
         />
       ) : <span className="text-muted">-</span>,
-      width: '100px',
       wrap: true
     },
     {
       name: 'Partisipasi',
       cell: row => getParticipationBadge(row.participation),
-      width: '100px',
       wrap: true
     }
   ]
@@ -185,9 +281,12 @@ const BazaarProducts = () => {
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
       <Row className="mb-3">
         <Col xs="12" md="6">
-          <h4>Produk Bazaar per Bazaar</h4>
+          <h4>Produk per Bazaar{effectiveAnnouncement ? ` - ${effectiveAnnouncement.data.weekCode || ''} - ${effectiveAnnouncement.data.title || ''}` : ''}</h4>
         </Col>
         <Col xs="12" md="6" className="text-end mt-2 mt-md-0">
+          <Button color="success" className="me-2" onClick={handleExportCSV} disabled={loading}>
+            Export CSV
+          </Button>
           <Button color="danger" className="me-2" onClick={() => {
             setSearchText('');
             setSupplierFilter(null);
@@ -199,19 +298,7 @@ const BazaarProducts = () => {
         </Col>
       </Row>
       <Row className="mb-3">
-        <Col xs="12" md="3" className="mb-2 mb-md-0">
-          <Label>Pilih Pengumuman Bazaar</Label>
-          <Select
-            options={announcementOptions}
-            value={selectedAnnouncement}
-            onChange={setSelectedAnnouncement}
-            placeholder="Pilih pengumuman..."
-            isClearable
-            isSearchable
-            isDisabled={loading}
-          />
-        </Col>
-        <Col xs="12" md="2" className="mb-2 mb-md-0 d-flex align-items-end">
+        <Col xs="12" md="3" className="mb-2 mb-md-0 d-flex align-items-end">
           <FormGroup className="mb-0 w-100">
             <Label>Filter Partisipasi</Label>
             <Input
@@ -226,7 +313,7 @@ const BazaarProducts = () => {
             </Input>
           </FormGroup>
         </Col>
-        <Col xs="12" md="2" className="mb-2 mb-md-0 d-flex align-items-end">
+        <Col xs="12" md="3" className="mb-2 mb-md-0 d-flex align-items-end">
           <FormGroup className="mb-0 w-100">
             <Label>Filter Supplier</Label>
             <Select
@@ -240,7 +327,7 @@ const BazaarProducts = () => {
             />
           </FormGroup>
         </Col>
-        <Col xs="12" md="2" className="mb-2 mb-md-0 d-flex align-items-end">
+        <Col xs="12" md="3" className="mb-2 mb-md-0 d-flex align-items-end">
           <FormGroup className="mb-0 w-100">
             <Label>Filter Jenis Produk</Label>
             <Select

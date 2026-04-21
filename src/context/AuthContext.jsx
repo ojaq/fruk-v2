@@ -664,6 +664,7 @@ export const AuthProvider = ({ children }) => {
       register,
       createRegistration,
       createOrder,
+      fetchOrders,
       saveBazaarData,
       logBazaarAction,
       saveProductData,

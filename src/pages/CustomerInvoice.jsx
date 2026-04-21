@@ -88,7 +88,13 @@ const CustomerInvoice = () => {
   }, [orders, weeks, activeWeek])
 
   const handleInvoiceMarkLunas = async () => {
-    if (!selectedInvoiceRow || !selectedInvoiceRow.orderIds?.length) return
+    if (!selectedInvoiceRow || !selectedInvoiceRow.items?.length) return
+
+    const openBillOrderIds = selectedInvoiceRow.items
+      .filter(item => item.rawStatus === 'open_bill')
+      .flatMap(item => item.orderIds)
+
+    if (!openBillOrderIds.length) return
 
     setInvoiceLoading(true)
     try {
@@ -98,7 +104,7 @@ const CustomerInvoice = () => {
           status: 'lunas',
           method: invoiceMethod
         })
-        .in('id', selectedInvoiceRow.orderIds)
+        .in('id', openBillOrderIds)
 
       if (error) throw error
 
@@ -216,7 +222,7 @@ const CustomerInvoice = () => {
       doc.setFont('helvetica', 'normal')
       doc.text('Catatan:', 15, finalY + 10)
       doc.text(`Invoice untuk ${weekNum ? `minggu ke-${weekNum}` : 'semua minggu'}`, 15, finalY + 15)
-      doc.text('Pembayaran dapat dilakukan melalui :\nBCA - 6801873348\nSarifah Alia', 15, finalY + 25)
+      doc.text('Pembayaran dapat dilakukan melalui :\nBank Jago Syariah - 503236704721\nDini Widianti', 15, finalY + 25)
 
       doc.save(`Customer Invoice - ${pemesan} ${weekNum ? `Minggu ke-${weekNum}` : 'Semua Minggu'}.pdf`)
     }
@@ -376,7 +382,26 @@ const CustomerInvoice = () => {
       {filteredGrouped.map(group => (
         <Card key={group.id} className="mb-3">
           <CardHeader>
-            <h5>{group.pemesan}{group.sourceLabel ? ` (${group.sourceLabel})` : ''}</h5>
+            <Row className="align-items-center">
+              <Col>
+                <h5>{group.pemesan}{group.sourceLabel ? ` (${group.sourceLabel})` : ''}</h5>
+              </Col>
+              {group.items.some(item => item.rawStatus === 'open_bill') && (
+                <Col xs="auto">
+                  <Button
+                    color="warning"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedInvoiceRow(group)
+                      setInvoiceMethod('transfer')
+                      setInvoiceModalOpen(true)
+                    }}
+                  >
+                    Tandai Lunas
+                  </Button>
+                </Col>
+              )}
+            </Row>
           </CardHeader>
           <CardBody className="mb-2 p-0">
             <div className="overflow-auto">
@@ -441,23 +466,7 @@ const CustomerInvoice = () => {
                   },
                   {
                     name: 'Aksi',
-                    cell: row => (
-                      row.sourceLabel === 'Offline Open Bill'
-                        ? (
-                          <Button
-                            color="warning"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedInvoiceRow(row)
-                              setInvoiceMethod('transfer')
-                              setInvoiceModalOpen(true)
-                            }}
-                          >
-                            Tandai Lunas
-                          </Button>
-                        )
-                        : '-'
-                    ),
+                    cell: row => '-',
                     width: '140px',
                     wrap: true
                   }
@@ -486,7 +495,7 @@ const CustomerInvoice = () => {
       <Modal isOpen={invoiceModalOpen} toggle={() => setInvoiceModalOpen(false)} centered>
         <ModalHeader toggle={() => setInvoiceModalOpen(false)}>Ubah Open Bill menjadi Lunas</ModalHeader>
         <ModalBody>
-          <p>Ubah open bill offline menjadi lunas untuk <strong>{selectedInvoiceRow?.pemesan}</strong>.</p>
+          <p>Ubah semua open bill offline menjadi lunas untuk <strong>{selectedInvoiceRow?.pemesan}</strong>.</p>
           <FormGroup>
             <Label>Method pembayaran</Label>
             <Select
