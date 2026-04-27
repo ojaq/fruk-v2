@@ -236,8 +236,8 @@ export default function TopNavBar() {
             toggle={() => setUserMenuOpen((o) => !o)}
           >
             <DropdownToggle caret size="sm" className="app-topnav-btn">
-              <span className="d-none d-sm-inline">{user?.name}</span>
-              <span className="d-inline d-sm-none">{user?.name}</span>
+              <span className="d-none d-sm-inline">{user?.nama_supplier}</span>
+              <span className="d-inline d-sm-none">{user?.nama_supplier}</span>
             </DropdownToggle>
             <DropdownMenu end>
               <DropdownItem header>{user?.role}</DropdownItem>
@@ -256,7 +256,7 @@ export default function TopNavBar() {
         </div>
       </Navbar>
 
-      <div className="d-md-none px-3 py-2 bg-app-elevated border-bottom border-light border-opacity-10 sticky-top" style={{ top: '56px' }}>
+      <div className="d-md-none px-3 py-2 border-bottom border-light border-opacity-10 sticky-top" style={{ top: '56px' }}>
         <Select
           options={weekOptions}
           placeholder="Pilih minggu bazaar"
@@ -277,6 +277,10 @@ export default function TopNavBar() {
             } else if (path.startsWith('/supplier-invoice')) {
               navigate(week ? `/supplier-invoice/${week}` : '/supplier-invoice')
             }
+          }}
+          menuPortalTarget={document.body}
+          styles={{
+            menuPortal: base => ({ ...base, zIndex: 1000 })
           }}
         />
       </div>

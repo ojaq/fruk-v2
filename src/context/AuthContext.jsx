@@ -188,7 +188,7 @@ export const AuthProvider = ({ children }) => {
         id: r.id,
         announcementId: r.announcement_id,
         supplierId: r.supplier_id,
-        supplierName: supplier?.name || null,
+        supplierName: supplier?.nama_supplier || supplier?.name || null,
 
         status: r.status,
         notes: r.notes,

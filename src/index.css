@@ -176,9 +176,14 @@ a:hover {
   }
 }
 
+.d-md-none.sticky-top {
+  z-index: 1040;
+}
+
 .app-topnav {
   background: var(--app-primary) !important;
   color: #e8eef7 !important;
+  z-index: 1050;
 }
 
 .app-topnav .navbar-nav .nav-link {

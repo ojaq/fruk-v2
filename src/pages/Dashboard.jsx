@@ -203,7 +203,7 @@ const Dashboard = () => {
       <div className="app-dashboard-hero mb-4">
         <div className="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
           <div>
-            <h1 className="h4 mb-1 text-white fw-bold">{user.name}</h1>
+            <h1 className="h4 mb-1 text-white fw-bold">{user.nama_supplier}</h1>
             <div className="d-flex flex-wrap gap-2 align-items-center">
               <Badge color="light" className="text-dark">
                 {user.role}
