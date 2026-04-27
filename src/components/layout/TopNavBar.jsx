@@ -236,8 +236,8 @@ export default function TopNavBar() {
             toggle={() => setUserMenuOpen((o) => !o)}
           >
             <DropdownToggle caret size="sm" className="app-topnav-btn">
-              <span className="d-none d-sm-inline">{user?.nama_supplier}</span>
-              <span className="d-inline d-sm-none">{user?.nama_supplier}</span>
+              <span className="d-none d-sm-inline">{user?.nama_supplier || user?.name}</span>
+              <span className="d-inline d-sm-none">{user?.nama_supplier || user?.name}</span>
             </DropdownToggle>
             <DropdownMenu end>
               <DropdownItem header>{user?.role}</DropdownItem>
