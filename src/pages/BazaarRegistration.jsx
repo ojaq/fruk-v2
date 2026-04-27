@@ -40,12 +40,41 @@ function formatDateTimeID(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
   if (isNaN(d)) return dateStr
-  const jam = d.getHours().toString().padStart(2, '0')
-  const menit = d.getMinutes().toString().padStart(2, '0')
-  return `${d.getDate().toString().padStart(2, '0')} ${MONTHS_ID[d.getMonth()]} ${d.getFullYear()} ${jam}:${menit}`
+  const jam = d.getUTCHours().toString().padStart(2, '0')
+  const menit = d.getUTCMinutes().toString().padStart(2, '0')
+  return `${d.getUTCDate().toString().padStart(2, '0')} ${MONTHS_ID[d.getUTCMonth()]} ${d.getUTCFullYear()} ${jam}:${menit}`
 }
 function getSupplierName(user) {
-  return user?.namaSupplier || user?.name || ''
+  return user?.nama_supplier || user?.name || ''
+}
+function getProductId(product) {
+  return product?.id || product?.product_id || product?.productId || null
+}
+function getProductName(product) {
+  return product?.nama_produk || product?.namaProduk || product?.label || ''
+}
+function getProductType(product) {
+  return product?.jenis_produk || product?.jenisProduk || null
+}
+function getProductImage(product) {
+  return product?.image_url || product?.imageUrl || null
+}
+function toProductOption(productLike) {
+  const name = getProductName(productLike)
+  const size = productLike?.ukuran || ''
+  const unit = productLike?.satuan || ''
+  const label = `${name} ${size} ${unit}`.trim()
+  return {
+    label,
+    value: label,
+    data: {
+      ...productLike,
+      id: getProductId(productLike),
+      namaProduk: name,
+      jenisProduk: getProductType(productLike),
+      imageUrl: getProductImage(productLike)
+    }
+  }
 }
 
 const BazaarRegistration = () => {
@@ -65,7 +94,7 @@ const BazaarRegistration = () => {
 
   const [form, setForm] = useState({
     announcementId: '',
-    supplierName: user.namaSupplier || '',
+    supplierName: user.nama_supplier || '',
     participateOnline: false,
     participateOffline: false,
     selectedProducts: [],
@@ -103,7 +132,7 @@ const BazaarRegistration = () => {
     const deadline = new Date(a.registrationDeadline)
     return now <= deadline
   })
-  const userRegistrations = registrations.filter(r => r?.supplierName === supplierKey || r?.supplierName === user?.name || r?.supplierName === user.namaSupplier)
+  const userRegistrations = registrations.filter(r => r?.supplierName === supplierKey || r?.supplierName === user?.name || r?.supplierName === user.nama_supplier)
 
   const availableAnnouncements = activeAnnouncements.filter(a => !userRegistrations.some(r => r.announcementId === a.id && r.status !== 'rejected'))
 
@@ -308,66 +337,125 @@ const BazaarRegistration = () => {
 
       if (useSameProducts) {
         const channel = (participateOnline && participateOffline) ? 'both' : (participateOnline ? 'online' : 'offline')
-          ; (selectedProducts || []).forEach((p, idx) => {
-            const data = p.data || {}
-            const stockKeyLabel = `offline-${p.label}`
-            const stockKeyId = p.data && p.data.id ? `id-${p.data.id}` : null
-            const item = {
-              channel,
-              nama_produk: data.namaProduk || p.label || null,
-              jenis_produk: data.jenisProduk || null,
-              keterangan: data.keterangan || null,
-              satuan: data.satuan || null,
-              ukuran: data.ukuran || null,
-              hjk: data.hjk || null,
-              hpp: data.hpp || null,
-              image_url: data.imageUrl || null,
-              product_id: data.id || null
+        
+        const uniqueSelectedProducts = []
+        const seenIds = new Set()
+        const seenLabels = new Set()
+        ;(selectedProducts || []).forEach(p => {
+          const pid = getProductId(p.data)
+          if (pid) {
+            if (!seenIds.has(pid)) {
+              seenIds.add(pid)
+              uniqueSelectedProducts.push(p)
             }
-            if (channel === 'offline' || channel === 'both') {
-              const val = (stockKeyId && offlineStocks[stockKeyId]) ? offlineStocks[stockKeyId] : offlineStocks[stockKeyLabel]
-              item.offline_stock = val ? parseInt(val) : null
-            } else {
-              item.offline_stock = null
+          } else {
+            const label = p.label
+            if (!seenLabels.has(label)) {
+              seenLabels.add(label)
+              uniqueSelectedProducts.push(p)
             }
-            registrationProducts.push(item)
-          })
-      } else {
-        ; (selectedProductsOnline || []).forEach(p => {
+          }
+        })
+        
+        uniqueSelectedProducts.forEach((p, idx) => {
           const data = p.data || {}
-          registrationProducts.push({
-            channel: 'online',
-            nama_produk: data.namaProduk || p.label || null,
-            jenis_produk: data.jenisProduk || null,
+          const stockKeyLabel = `offline-${p.label}`
+          const stockKeyId = p.data && p.data.id ? `id-${p.data.id}` : null
+          const item = {
+            channel,
+            nama_produk: getProductName(data) || p.label || null,
+            jenis_produk: getProductType(data),
             keterangan: data.keterangan || null,
             satuan: data.satuan || null,
             ukuran: data.ukuran || null,
             hjk: data.hjk || null,
             hpp: data.hpp || null,
-            image_url: data.imageUrl || null,
+            image_url: getProductImage(data),
+            product_id: getProductId(data)
+          }
+          if (channel === 'offline' || channel === 'both') {
+            const val = (stockKeyId && offlineStocks[stockKeyId]) ? offlineStocks[stockKeyId] : offlineStocks[stockKeyLabel]
+            item.offline_stock = val ? parseInt(val) : null
+          } else {
+            item.offline_stock = null
+          }
+          registrationProducts.push(item)
+        })
+      } else {
+        const uniqueSelectedProductsOnline = []
+        const seenIdsOnline = new Set()
+        const seenLabelsOnline = new Set()
+        ;(selectedProductsOnline || []).forEach(p => {
+          const pid = getProductId(p.data)
+          if (pid) {
+            if (!seenIdsOnline.has(pid)) {
+              seenIdsOnline.add(pid)
+              uniqueSelectedProductsOnline.push(p)
+            }
+          } else {
+            const label = p.label
+            if (!seenLabelsOnline.has(label)) {
+              seenLabelsOnline.add(label)
+              uniqueSelectedProductsOnline.push(p)
+            }
+          }
+        })
+        
+        uniqueSelectedProductsOnline.forEach(p => {
+          const data = p.data || {}
+          registrationProducts.push({
+            channel: 'online',
+            nama_produk: getProductName(data) || p.label || null,
+            jenis_produk: getProductType(data),
+            keterangan: data.keterangan || null,
+            satuan: data.satuan || null,
+            ukuran: data.ukuran || null,
+            hjk: data.hjk || null,
+            hpp: data.hpp || null,
+            image_url: getProductImage(data),
             offline_stock: null,
-            product_id: data.id || null
+            product_id: getProductId(data)
           })
         })
-          ; (selectedProductsOffline || []).forEach((p, idx) => {
-            const data = p.data || {}
-            const stockKeyLabel = `offline-${p.label}`
-            const stockKeyId = p.data && p.data.id ? `id-${p.data.id}` : null
-            const stockVal = (stockKeyId && offlineStocks[stockKeyId]) ? offlineStocks[stockKeyId] : offlineStocks[stockKeyLabel]
-            registrationProducts.push({
-              channel: 'offline',
-              nama_produk: data.namaProduk || p.label || null,
-              jenis_produk: data.jenisProduk || null,
-              keterangan: data.keterangan || null,
-              satuan: data.satuan || null,
-              ukuran: data.ukuran || null,
-              hjk: data.hjk || null,
-              hpp: data.hpp || null,
-              image_url: data.imageUrl || null,
-              offline_stock: stockVal ? parseInt(stockVal) : null,
-              product_id: data.id || null
-            })
+        
+        const uniqueSelectedProductsOffline = []
+        const seenIdsOffline = new Set()
+        const seenLabelsOffline = new Set()
+        ;(selectedProductsOffline || []).forEach(p => {
+          const pid = getProductId(p.data)
+          if (pid) {
+            if (!seenIdsOffline.has(pid)) {
+              seenIdsOffline.add(pid)
+              uniqueSelectedProductsOffline.push(p)
+            }
+          } else {
+            const label = p.label
+            if (!seenLabelsOffline.has(label)) {
+              seenLabelsOffline.add(label)
+              uniqueSelectedProductsOffline.push(p)
+            }
+          }
+        })
+        
+        uniqueSelectedProductsOffline.forEach((p, idx) => {
+          const data = p.data || {}
+          const stockKeyLabel = `offline-${p.label}`
+          const stockKeyId = p.data && p.data.id ? `id-${p.data.id}` : null
+          const stockVal = (stockKeyId && offlineStocks[stockKeyId]) ? offlineStocks[stockKeyId] : offlineStocks[stockKeyLabel]
+          registrationProducts.push({
+            channel: 'offline',
+            nama_produk: getProductName(data) || p.label || null,
+            jenis_produk: getProductType(data),
+            keterangan: data.keterangan || null,
+            satuan: data.satuan || null,
+            ukuran: data.ukuran || null,
+            hjk: data.hjk || null,
+            hpp: data.hpp || null,
+            image_url: getProductImage(data),
+            offline_stock: stockVal ? parseInt(stockVal) : null,
+            product_id: getProductId(data)
           })
+        })
       }
 
       const tempId = editId ? editId : `temp-${Date.now()}`
@@ -440,57 +528,45 @@ const BazaarRegistration = () => {
 
     if (row.useSameProducts || !row.registrationProducts) {
       selectedProducts = regProds.map(p => {
-        const prod = userProducts.find(up => up.id === p.productId)
-        if (prod) {
-          return {
-            label: `${prod.namaProduk} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
-            value: `${prod.namaProduk} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
-            data: prod
-          }
+        const productId = getProductId(p)
+        const prod = userProducts.find(up => getProductId(up?.data) === productId)
+        return prod || toProductOption(p)
+      }).filter((item, index, arr) => {
+        const pid = item.data?.id
+        if (pid) {
+          return arr.findIndex(x => x.data?.id === pid) === index
         } else {
-          return {
-            label: `${p.namaProduk || p.nama_produk || ''} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
-            value: `${p.namaProduk || p.nama_produk || ''} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
-            data: p
-          }
+          return arr.findIndex(x => x.label === item.label) === index
         }
       })
     } else {
       selectedProductsOnline = regProds
         .filter(p => p.channel === 'online' || p.channel === 'both')
         .map(p => {
-          const prod = userProducts.find(up => up.id === p.productId)
-          if (prod) {
-            return {
-              label: `${prod.namaProduk} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
-              value: `${prod.namaProduk} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
-              data: prod
-            }
+          const productId = getProductId(p)
+          const prod = userProducts.find(up => getProductId(up?.data) === productId)
+          return prod || toProductOption(p)
+        }).filter((item, index, arr) => {
+          const pid = item.data?.id
+          if (pid) {
+            return arr.findIndex(x => x.data?.id === pid) === index
           } else {
-            return {
-              label: `${p.namaProduk || p.nama_produk || ''} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
-              value: `${p.namaProduk || p.nama_produk || ''} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
-              data: p
-            }
+            return arr.findIndex(x => x.label === item.label) === index
           }
         })
 
       selectedProductsOffline = regProds
         .filter(p => p.channel === 'offline' || p.channel === 'both')
         .map(p => {
-          const prod = userProducts.find(up => up.id === p.productId)
-          if (prod) {
-            return {
-              label: `${prod.namaProduk} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
-              value: `${prod.namaProduk} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
-              data: prod
-            }
+          const productId = getProductId(p)
+          const prod = userProducts.find(up => getProductId(up?.data) === productId)
+          return prod || toProductOption(p)
+        }).filter((item, index, arr) => {
+          const pid = item.data?.id
+          if (pid) {
+            return arr.findIndex(x => x.data?.id === pid) === index
           } else {
-            return {
-              label: `${p.namaProduk || p.nama_produk || ''} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
-              value: `${p.namaProduk || p.nama_produk || ''} ${p.ukuran || ''} ${p.satuan || ''}`.trim(),
-              data: p
-            }
+            return arr.findIndex(x => x.label === item.label) === index
           }
         })
     }
@@ -503,7 +579,8 @@ const BazaarRegistration = () => {
         const productLabel = `${name} ${rp.ukuran || ''} ${rp.satuan || ''}`.trim()
         const stockValue = String(rawStock)
         offlineStocksMap[`offline-${productLabel}`] = stockValue
-        if (rp.id) offlineStocksMap[`id-${rp.id}`] = stockValue
+        const productId = getProductId(rp)
+        if (productId) offlineStocksMap[`id-${productId}`] = stockValue
       }
     })
     setOfflineStocks(offlineStocksMap)
@@ -589,8 +666,10 @@ const BazaarRegistration = () => {
 
     setLoading(true)
     try {
-      await supabase.from('registration_products').delete().eq('registration_id', row.id)
-      await supabase.from('registrations').delete().eq('id', row.id)
+      const { error: productDeleteError } = await supabase.from('registration_products').delete().eq('registration_id', row.id)
+      if (productDeleteError) throw productDeleteError
+      const { error: registrationDeleteError } = await supabase.from('registrations').delete().eq('id', row.id)
+      if (registrationDeleteError) throw registrationDeleteError
 
       setRegistrations(prev => prev.filter(r => r.id !== row.id))
       Swal.fire('Dihapus!', 'Pendaftaran berhasil dihapus.', 'success')
@@ -1182,7 +1261,8 @@ const BazaarRegistration = () => {
                   if (rawStock !== null && rawStock !== undefined) {
                     const label = `${p.nama_produk || p.namaProduk || p.label} ${p.ukuran || ''} ${p.satuan || ''}`.trim()
                     offlineMap[`offline-${label}`] = String(rawStock)
-                    if (p.id) offlineMap[`id-${p.id}`] = String(rawStock)
+                    const productId = getProductId(p)
+                    if (productId) offlineMap[`id-${productId}`] = String(rawStock)
                   }
                 })
 

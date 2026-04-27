@@ -179,7 +179,8 @@ const BazaarProducts = () => {
     link.setAttribute('href', url)
     const now = new Date()
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`
-    link.setAttribute('download', `bazaar_products_${timestamp}.csv`)
+    const announcementName = effectiveAnnouncement?.data?.title || 'Bazaar'
+    link.setAttribute('download', `Produk Bazaar - ${announcementName}_${timestamp}.csv`)
     link.style.visibility = 'hidden'
     document.body.appendChild(link)
     link.click()

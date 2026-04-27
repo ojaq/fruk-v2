@@ -58,7 +58,6 @@ const Dashboard = () => {
       if (a?.status !== 'active') return false
       if (!a.registrationDeadline) return true
       const deadline = new Date(a.registrationDeadline)
-      deadline.setHours(23, 59, 59, 999)
       return deadline >= now
     })
 

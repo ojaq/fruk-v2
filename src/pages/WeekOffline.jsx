@@ -341,13 +341,27 @@ const WeekOffline = () => {
   }
 
   const addItem = () => {
-    setForm(prev => ({
-      ...prev,
-      items: [
-        ...prev.items,
-        createEmptyItem()
-      ]
-    }))
+    setForm(prev => {
+      const prevItems = prev.items || []
+      const lastItem = prevItems.length ? prevItems[prevItems.length - 1] : null
+      const inheritedStatusMethod = lastItem?.registrationProductId
+        ? {
+            status: lastItem.status || '',
+            method: lastItem.status === 'lunas' ? (lastItem.method || '') : ''
+          }
+        : {}
+
+      return {
+        ...prev,
+        items: [
+          ...prevItems,
+          {
+            ...createEmptyItem(),
+            ...inheritedStatusMethod
+          }
+        ]
+      }
+    })
   }
 
   const removeItem = (index) => {
@@ -367,8 +381,11 @@ const WeekOffline = () => {
       const selectedProductIds = validItems.map(item => item.registrationProductId)
       const hasDuplicateProduct = new Set(selectedProductIds).size !== selectedProductIds.length
       const invalidStatusMethod = validItems.some(item => !item.status || (item.status === 'lunas' && !item.method))
+      const hasOpenBillItem = validItems.some(item => item.status === 'open_bill')
+      const normalizedPemesan = (pemesan || '').trim()
+      const effectivePemesan = hasOpenBillItem ? normalizedPemesan : 'Tanpa Nama'
 
-      if (!pemesan || !validItems.length || invalidStatusMethod) {
+      if (!validItems.length || invalidStatusMethod || (hasOpenBillItem && !normalizedPemesan)) {
         Swal.fire('Gagal', 'Semua field * wajib diisi', 'error')
         setLoading(false)
         return
@@ -408,7 +425,7 @@ const WeekOffline = () => {
           registration_product_id: item.registrationProductId,
           supplier_id: item.supplierId || undefined,
           channel: 'offline',
-          pemesan,
+          pemesan: effectivePemesan,
           jumlah,
           harga_satuan: hargaSatuan,
           catatan: item.catatan || null,
@@ -995,18 +1012,21 @@ const WeekOffline = () => {
           <ModalBody>
             <Row className="mb-2">
               <Col xs="12" sm="12" className="mb-2">
-                <Label>Pemesan *</Label>
+                <Label>
+                  Pemesan {form.items.some(item => item.status === 'open_bill') ? '*' : '(opsional jika semua lunas)'}
+                </Label>
                 <Input
                   value={form.pemesan}
                   onChange={(e) => {
                     setForm((f) => ({ ...f, pemesan: e.target.value }))
                   }}
                   disabled={loading || isAllWeek}
+                  placeholder={form.items.some(item => item.status === 'open_bill') ? 'Isi nama pemesan' : 'Jika semua lunas akan disimpan sebagai Tanpa Nama'}
                   list={!isAllWeek ? 'pemesan-suggestions-offline' : undefined}
                 />
                 {!isAllWeek && (
                   <datalist id="pemesan-suggestions-offline">
-                    {uniquePemesanThisWeek.map((p, i) => (
+                    {uniquePemesanThisWeek.filter(p => p !== 'Tanpa Nama').map((p, i) => (
                       <option key={i} value={p} />
                     ))}
                   </datalist>

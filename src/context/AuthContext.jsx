@@ -378,7 +378,9 @@ export const AuthProvider = ({ children }) => {
               hjk: p.hjk || null,
               hpp: p.hpp || null,
               image_url: p.image_url || p.imageUrl || null,
-              offline_stock: p.offline_stock || null, product_id: p.product_id || null, is_active: p.isActive === undefined ? true : p.isActive,
+              offline_stock: p.offline_stock ?? p.offlineStock ?? null,
+              product_id: p.product_id || p.productId || p.id || null,
+              is_active: p.isActive === undefined ? true : p.isActive,
               is_deleted: false
             }))
             if (newProducts.length) {
@@ -386,9 +388,24 @@ export const AuthProvider = ({ children }) => {
             }
           }
         } else {
-          const { data: newReg, error: regErr } = await supabase.from('registrations').insert([payload]).select().single()
-          if (regErr) throw regErr
+          let { data: newReg, error: regErr } = await supabase.from('registrations').insert([payload]).select().single()
+          if (regErr && regErr.code === '23505') {
+            // Revive existing unique row (announcement_id + supplier_id) instead of failing a new registration.
+            const { data: existingReg, error: existingErr } = await supabase
+              .from('registrations')
+              .select('id')
+              .eq('announcement_id', payload.announcement_id)
+              .eq('supplier_id', payload.supplier_id)
+              .maybeSingle()
+            if (existingErr) throw existingErr
+            if (!existingReg?.id) throw regErr
+            await supabase.from('registrations').update({ ...payload, is_deleted: false }).eq('id', existingReg.id)
+            newReg = { id: existingReg.id }
+          } else if (regErr) {
+            throw regErr
+          }
           if (reg.registrationProducts && reg.registrationProducts.length) {
+            await supabase.from('registration_products').delete().eq('registration_id', newReg.id)
             const inserts = reg.registrationProducts.map(p => ({
               registration_id: newReg.id,
               channel: p.channel,
@@ -400,8 +417,8 @@ export const AuthProvider = ({ children }) => {
               hjk: p.hjk || null,
               hpp: p.hpp || null,
               image_url: p.image_url || p.imageUrl || null,
-              offline_stock: p.offline_stock || null,
-              product_id: p.product_id || null
+              offline_stock: p.offline_stock ?? p.offlineStock ?? null,
+              product_id: p.product_id || p.productId || p.id || null
             }))
             if (inserts.length) {
               await supabase.from('registration_products').insert(inserts)
@@ -493,7 +510,11 @@ export const AuthProvider = ({ children }) => {
   }
 
   const login = (name) => {
-    const found = users.find(u => u.name === name)
+    const normalized = name.trim().toLowerCase()
+    const found = users.find(
+      u => u.name.trim().toLowerCase() === normalized
+    )
+
     if (!found) throw new Error('User tidak ditemukan')
 
     setUser(found)

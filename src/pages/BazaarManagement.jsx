@@ -24,9 +24,9 @@ function formatDateTimeID(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
   if (isNaN(d)) return dateStr
-  const jam = d.getHours().toString().padStart(2, '0')
-  const menit = d.getMinutes().toString().padStart(2, '0')
-  return `${d.getDate().toString().padStart(2, '0')} ${MONTHS_ID[d.getMonth()]} ${d.getFullYear()} ${jam}:${menit}`
+  const jam = d.getUTCHours().toString().padStart(2, '0')
+  const menit = d.getUTCMinutes().toString().padStart(2, '0')
+  return `${d.getUTCDate().toString().padStart(2, '0')} ${MONTHS_ID[d.getUTCMonth()]} ${d.getUTCFullYear()} ${jam}:${menit}`
 }
 
 const BazaarManagement = () => {
@@ -673,7 +673,8 @@ const BazaarManagement = () => {
       const link = document.createElement('a')
       const url = URL.createObjectURL(blob)
       link.setAttribute('href', url)
-      link.setAttribute('download', `bazaar_registrations_${moment().format('YYYY-MM-DD_HH-mm')}.csv`)
+      const filename = filterAnnouncement ? `Pendaftaran Bazaar - ${filterAnnouncement.label}_${moment().format('YYYY-MM-DD_HH-mm')}.csv` : `Pendaftaran Semua Bazaar_${moment().format('YYYY-MM-DD_HH-mm')}.csv`
+      link.setAttribute('download', filename)
       link.style.visibility = 'hidden'
       document.body.appendChild(link)
       link.click()
