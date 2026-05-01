@@ -361,29 +361,26 @@ export const AuthProvider = ({ children }) => {
 
         if (reg.id && existingRegIds.includes(reg.id)) {
           await supabase.from('registrations').update(payload).eq('id', reg.id)
+          if (reg.registrationProducts !== undefined) {
+            await supabase.from('registration_products').delete().eq('registration_id', reg.id)
+            if (reg.registrationProducts.length) {
+              const newProducts = reg.registrationProducts.map(p => ({
+                registration_id: reg.id,
+                channel: p.channel,
+                nama_produk: p.nama_produk || p.namaProduk || p.label || null,
+                jenis_produk: p.jenis_produk || p.jenisProduk || null,
+                keterangan: p.keterangan || null,
+                satuan: p.satuan || null,
+                ukuran: p.ukuran || null,
+                hjk: p.hjk || null,
+                hpp: p.hpp || null,
+                image_url: p.image_url || p.imageUrl || null,
+                offline_stock: p.offline_stock ?? p.offlineStock ?? null,
+                product_id: p.product_id || p.productId || p.id || null,
+                is_active: p.isActive === undefined ? true : p.isActive,
+                is_deleted: false
+              }))
 
-
-          await supabase.from('registration_products').delete().eq('registration_id', reg.id)
-
-
-          if (reg.registrationProducts && reg.registrationProducts.length) {
-            const newProducts = reg.registrationProducts.map(p => ({
-              registration_id: reg.id,
-              channel: p.channel,
-              nama_produk: p.nama_produk || p.namaProduk || p.label || null,
-              jenis_produk: p.jenis_produk || p.jenisProduk || null,
-              keterangan: p.keterangan || null,
-              satuan: p.satuan || null,
-              ukuran: p.ukuran || null,
-              hjk: p.hjk || null,
-              hpp: p.hpp || null,
-              image_url: p.image_url || p.imageUrl || null,
-              offline_stock: p.offline_stock ?? p.offlineStock ?? null,
-              product_id: p.product_id || p.productId || p.id || null,
-              is_active: p.isActive === undefined ? true : p.isActive,
-              is_deleted: false
-            }))
-            if (newProducts.length) {
               await supabase.from('registration_products').insert(newProducts)
             }
           }
