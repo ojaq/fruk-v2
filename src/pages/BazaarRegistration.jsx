@@ -40,9 +40,9 @@ function formatDateTimeID(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
   if (isNaN(d)) return dateStr
-  const jam = d.getUTCHours().toString().padStart(2, '0')
-  const menit = d.getUTCMinutes().toString().padStart(2, '0')
-  return `${d.getUTCDate().toString().padStart(2, '0')} ${MONTHS_ID[d.getUTCMonth()]} ${d.getUTCFullYear()} ${jam}:${menit}`
+  const jam = d.getHours().toString().padStart(2, '0')
+  const menit = d.getMinutes().toString().padStart(2, '0')
+  return `${d.getDate().toString().padStart(2, '0')} ${MONTHS_ID[d.getMonth()]} ${d.getFullYear()} ${jam}:${menit}`
 }
 function getSupplierName(user) {
   return user?.nama_supplier || user?.name || ''
@@ -337,26 +337,26 @@ const BazaarRegistration = () => {
 
       if (useSameProducts) {
         const channel = (participateOnline && participateOffline) ? 'both' : (participateOnline ? 'online' : 'offline')
-        
+
         const uniqueSelectedProducts = []
         const seenIds = new Set()
         const seenLabels = new Set()
-        ;(selectedProducts || []).forEach(p => {
-          const pid = getProductId(p.data)
-          if (pid) {
-            if (!seenIds.has(pid)) {
-              seenIds.add(pid)
-              uniqueSelectedProducts.push(p)
+          ; (selectedProducts || []).forEach(p => {
+            const pid = getProductId(p.data)
+            if (pid) {
+              if (!seenIds.has(pid)) {
+                seenIds.add(pid)
+                uniqueSelectedProducts.push(p)
+              }
+            } else {
+              const label = p.label
+              if (!seenLabels.has(label)) {
+                seenLabels.add(label)
+                uniqueSelectedProducts.push(p)
+              }
             }
-          } else {
-            const label = p.label
-            if (!seenLabels.has(label)) {
-              seenLabels.add(label)
-              uniqueSelectedProducts.push(p)
-            }
-          }
-        })
-        
+          })
+
         uniqueSelectedProducts.forEach((p, idx) => {
           const data = p.data || {}
           const stockKeyLabel = `offline-${p.label}`
@@ -385,22 +385,22 @@ const BazaarRegistration = () => {
         const uniqueSelectedProductsOnline = []
         const seenIdsOnline = new Set()
         const seenLabelsOnline = new Set()
-        ;(selectedProductsOnline || []).forEach(p => {
-          const pid = getProductId(p.data)
-          if (pid) {
-            if (!seenIdsOnline.has(pid)) {
-              seenIdsOnline.add(pid)
-              uniqueSelectedProductsOnline.push(p)
+          ; (selectedProductsOnline || []).forEach(p => {
+            const pid = getProductId(p.data)
+            if (pid) {
+              if (!seenIdsOnline.has(pid)) {
+                seenIdsOnline.add(pid)
+                uniqueSelectedProductsOnline.push(p)
+              }
+            } else {
+              const label = p.label
+              if (!seenLabelsOnline.has(label)) {
+                seenLabelsOnline.add(label)
+                uniqueSelectedProductsOnline.push(p)
+              }
             }
-          } else {
-            const label = p.label
-            if (!seenLabelsOnline.has(label)) {
-              seenLabelsOnline.add(label)
-              uniqueSelectedProductsOnline.push(p)
-            }
-          }
-        })
-        
+          })
+
         uniqueSelectedProductsOnline.forEach(p => {
           const data = p.data || {}
           registrationProducts.push({
@@ -417,26 +417,26 @@ const BazaarRegistration = () => {
             product_id: getProductId(data)
           })
         })
-        
+
         const uniqueSelectedProductsOffline = []
         const seenIdsOffline = new Set()
         const seenLabelsOffline = new Set()
-        ;(selectedProductsOffline || []).forEach(p => {
-          const pid = getProductId(p.data)
-          if (pid) {
-            if (!seenIdsOffline.has(pid)) {
-              seenIdsOffline.add(pid)
-              uniqueSelectedProductsOffline.push(p)
+          ; (selectedProductsOffline || []).forEach(p => {
+            const pid = getProductId(p.data)
+            if (pid) {
+              if (!seenIdsOffline.has(pid)) {
+                seenIdsOffline.add(pid)
+                uniqueSelectedProductsOffline.push(p)
+              }
+            } else {
+              const label = p.label
+              if (!seenLabelsOffline.has(label)) {
+                seenLabelsOffline.add(label)
+                uniqueSelectedProductsOffline.push(p)
+              }
             }
-          } else {
-            const label = p.label
-            if (!seenLabelsOffline.has(label)) {
-              seenLabelsOffline.add(label)
-              uniqueSelectedProductsOffline.push(p)
-            }
-          }
-        })
-        
+          })
+
         uniqueSelectedProductsOffline.forEach((p, idx) => {
           const data = p.data || {}
           const stockKeyLabel = `offline-${p.label}`
@@ -462,6 +462,7 @@ const BazaarRegistration = () => {
       const newRegistration = {
         id: tempId,
         announcementId,
+        supplierId: user?.id || null,
         supplierName,
         participateOnline,
         participateOffline,

@@ -24,9 +24,9 @@ function formatDateTimeID(dateStr) {
   if (!dateStr) return ''
   const d = new Date(dateStr)
   if (isNaN(d)) return dateStr
-  const jam = d.getUTCHours().toString().padStart(2, '0')
-  const menit = d.getUTCMinutes().toString().padStart(2, '0')
-  return `${d.getUTCDate().toString().padStart(2, '0')} ${MONTHS_ID[d.getUTCMonth()]} ${d.getUTCFullYear()} ${jam}:${menit}`
+  const jam = d.getHours().toString().padStart(2, '0')
+  const menit = d.getMinutes().toString().padStart(2, '0')
+  return `${d.getDate().toString().padStart(2, '0')} ${MONTHS_ID[d.getMonth()]} ${d.getFullYear()} ${jam}:${menit}`
 }
 
 const BazaarManagement = () => {

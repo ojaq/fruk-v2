@@ -342,7 +342,7 @@ export const AuthProvider = ({ children }) => {
         const payload = {
           announcement_id: reg.announcementId,
           supplier_id: (() => {
-            const u = users.find(x => x.name === reg.supplierName) || users.find(x => x.id === reg.supplierId)
+            const u = users.find(x => x.name === reg.supplierName || x.nama_supplier === reg.supplierName || x.namaSupplier === reg.supplierName) || users.find(x => x.id === reg.supplierId)
             return u ? u.id : reg.supplierId || null
           })(),
           status: reg.status,
