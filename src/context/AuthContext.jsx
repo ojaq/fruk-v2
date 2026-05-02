@@ -266,10 +266,8 @@ export const AuthProvider = ({ children }) => {
 
   const saveBazaarData = async (newBazaarData) => {
     try {
-
       const incomingAnns = (newBazaarData?.announcements || []).slice()
       const existingAnnIds = (announcements || []).map(a => a.id)
-
       for (const ann of incomingAnns) {
         const payload = {
           title: ann.title,
@@ -277,41 +275,33 @@ export const AuthProvider = ({ children }) => {
           description: ann.description,
           terms: ann.terms,
           status: ann.status,
-
           online_date_start: ann.onlineDateStart || null,
           online_date_end: ann.onlineDateEnd || null,
           offline_date: ann.offlineDate || null,
           delivery_date: ann.deliveryDate || null,
           delivery_time: ann.deliveryTime || null,
           registration_deadline: ann.registrationDeadline || null,
-
           max_suppliers_online: ann.maxSuppliersOnline || null,
           max_suppliers_offline: ann.maxSuppliersOffline || null,
           max_products_per_supplier: ann.maxProductsPerSupplier || null,
-
           is_deleted: ann.isDeleted || false
         }
 
         const weekCode = ann.weekCode && typeof ann.weekCode === 'string' ? ann.weekCode : null
-
         if (weekCode) {
           let week = weeks.find(w => w.week_code === weekCode)
-
           if (!week) {
             const { data: newWeek, error } = await supabase
               .from('weeks')
               .insert([{ week_code: weekCode }])
               .select()
               .single()
-
             if (error) throw error
             week = newWeek
             await fetchWeeks()
           }
-
           payload.week_id = week.id
         }
-
         if (ann.id) {
           await supabase.from('announcements').update(payload).eq('id', ann.id)
         } else {
@@ -320,13 +310,10 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-
       const incomingIds = new Set(incomingAnns.map(a => a.id).filter(Boolean))
       const deletedWeekIds = new Set()
-
       for (const existing of announcements || []) {
         if (existing && !incomingIds.has(existing.id)) {
-
           await supabase
             .from('announcements')
             .update({ is_deleted: true })
@@ -334,10 +321,8 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-
       const incomingRegs = (newBazaarData?.registrations || []).slice()
       const existingRegIds = (registrations || []).map(r => r.id)
-
       for (const reg of incomingRegs) {
         const payload = {
           announcement_id: reg.announcementId,
@@ -361,9 +346,9 @@ export const AuthProvider = ({ children }) => {
 
         if (reg.id && existingRegIds.includes(reg.id)) {
           await supabase.from('registrations').update(payload).eq('id', reg.id)
-          if (reg.registrationProducts !== undefined) {
-            await supabase.from('registration_products').delete().eq('registration_id', reg.id)
-            if (reg.registrationProducts.length) {
+          if (Array.isArray(reg.registrationProducts)) {
+            if (reg.registrationProducts.length > 0) {
+              await supabase.from('registration_products').delete().eq('registration_id', reg.id)
               const newProducts = reg.registrationProducts.map(p => ({
                 registration_id: reg.id,
                 channel: p.channel,
@@ -380,7 +365,6 @@ export const AuthProvider = ({ children }) => {
                 is_active: p.isActive === undefined ? true : p.isActive,
                 is_deleted: false
               }))
-
               await supabase.from('registration_products').insert(newProducts)
             }
           }
@@ -401,7 +385,7 @@ export const AuthProvider = ({ children }) => {
           } else if (regErr) {
             throw regErr
           }
-          if (reg.registrationProducts && reg.registrationProducts.length) {
+          if (Array.isArray(reg.registrationProducts) && reg.registrationProducts.length > 0) {
             await supabase.from('registration_products').delete().eq('registration_id', newReg.id)
             const inserts = reg.registrationProducts.map(p => ({
               registration_id: newReg.id,
@@ -424,14 +408,12 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-
       const incomingRegIds = new Set(incomingRegs.map(r => r.id).filter(Boolean))
       for (const existing of registrations || []) {
         if (existing && !incomingRegIds.has(existing.id)) {
           await supabase.from('registrations').update({ is_deleted: true }).eq('id', existing.id)
         }
       }
-
 
       await Promise.all([fetchAnnouncements(), fetchRegistrations(), fetchWeeks()])
     } catch (e) {
