@@ -48,6 +48,7 @@ const BazaarManagement = () => {
   const [checkingFix, setCheckingFix] = useState(false)
   const [selectedFixReg, setSelectedFixReg] = useState(null)
   const [selectedFixIds, setSelectedFixIds] = useState(new Set())
+  const [editableProducts, setEditableProducts] = useState([])
 
   const [form, setForm] = useState({
     status: '',
@@ -257,6 +258,9 @@ const BazaarManagement = () => {
 
   const handleView = (row) => {
     setSelectedRegistration(row)
+    setEditableProducts(
+      (row.registrationProducts || []).map(p => ({ ...p }))
+    )
     setViewModalOpen(true)
   }
 
@@ -427,6 +431,22 @@ const BazaarManagement = () => {
     if (registration?.participateOffline) badges.push(<span key="offline" className="badge bg-info me-1">Offline</span>)
     return badges
   }
+
+  const hasOfflineStock = (editableProducts || []).some(
+    p => p.offline_stock != null
+  )
+
+  const hasChanges = (() => {
+    if (!selectedRegistration?.registrationProducts) return false
+
+    return editableProducts.some(edit => {
+      const original = selectedRegistration.registrationProducts.find(
+        p => p.id === edit.id
+      )
+
+      return original && original.offline_stock !== edit.offline_stock
+    })
+  })()
 
   const columns = [
     {
@@ -880,7 +900,7 @@ const BazaarManagement = () => {
         <ModalBody>
           {selectedRegistration && (
             <div>
-              <Card className="mb-3">
+              <Card>
                 <CardHeader>
                   <h6>Informasi Pendaftaran</h6>
                 </CardHeader>
@@ -924,15 +944,61 @@ const BazaarManagement = () => {
                                 </>}
                                 {offline.length > 0 && <>
                                   <li><strong>Offline:</strong></li>
-                                  {offline.map((product, index) => (
-                                    <li key={"off-" + (product.id || index)} style={{ marginLeft: 16 }}>{product.namaProduk || product.nama_produk || product.label}{product.offline_stock != null ? ` — Stok: ${product.offline_stock}` : ''}</li>
-                                  ))}
+                                  {offline.map((product) => {
+                                    const editable = editableProducts.find(p => p.id === product.id)
+                                    return (
+                                      <li key={"off-" + product.id} style={{ marginLeft: 16 }}>
+                                        {product.namaProduk || product.nama_produk || product.label}
+                                        {product.offline_stock != null && (
+                                          <>
+                                            {' — Stok: '}
+                                            <Input
+                                              type="number"
+                                              value={editable?.offline_stock ?? 0}
+                                              style={{ width: 80, display: 'inline-block', marginLeft: 8 }}
+                                              onChange={(e) => {
+                                                const updated = editableProducts.map(p =>
+                                                  p.id === product.id
+                                                    ? { ...p, offline_stock: Number(e.target.value) }
+                                                    : p
+                                                )
+                                                setEditableProducts(updated)
+                                              }}
+                                            />
+                                          </>
+                                        )}
+                                      </li>
+                                    )
+                                  })}
                                 </>}
                                 {both.length > 0 && <>
                                   <li><strong>Online & Offline:</strong></li>
-                                  {both.map((product, index) => (
-                                    <li key={"both-" + (product.id || index)} style={{ marginLeft: 16 }}>{product.namaProduk || product.nama_produk || product.label}{product.offline_stock != null ? ` — Stok offline: ${product.offline_stock}` : ''}</li>
-                                  ))}
+                                  {both.map((product) => {
+                                  const editable = editableProducts.find(p => p.id === product.id)
+                                  return (
+                                    <li key={"both-" + product.id} style={{ marginLeft: 16 }}>
+                                      {product.namaProduk || product.nama_produk || product.label}
+                                      {product.offline_stock != null && (
+                                        <>
+                                          {' — Stok Offline: '}
+                                          <Input
+                                            type="number"
+                                            value={editable?.offline_stock ?? 0}
+                                            style={{ width: 80, display: 'inline-block', marginLeft: 8 }}
+                                            onChange={(e) => {
+                                              const updated = editableProducts.map(p =>
+                                                p.id === product.id
+                                                  ? { ...p, offline_stock: Number(e.target.value) }
+                                                  : p
+                                              )
+                                              setEditableProducts(updated)
+                                            }}
+                                          />
+                                        </>
+                                      )}
+                                    </li>
+                                  )
+                                })}
                                 </>}
                               </>
                             )
@@ -993,6 +1059,65 @@ const BazaarManagement = () => {
             </div>
           )}
         </ModalBody>
+        <ModalFooter>
+          {hasOfflineStock && (
+            <Button
+              color="primary"
+              disabled={!hasChanges}
+              onClick={async () => {
+                try {
+                  const changes = editableProducts
+                    .map(edit => {
+                      const original = selectedRegistration.registrationProducts.find(
+                        p => p.id === edit.id
+                      )
+                      if (!original) return null
+                      if (original.offline_stock !== edit.offline_stock) {
+                        return {
+                          name: edit.nama_produk || edit.namaProduk || edit.label || 'Produk',
+                          from: original.offline_stock ?? 0,
+                          to: edit.offline_stock ?? 0
+                        }
+                      }
+                      return null
+                    })
+                    .filter(Boolean)
+
+                  const changeText = changes
+                    .map(c => `${c.name} stok diubah ${c.from} → ${c.to}`)
+                    .join('<br>')
+
+                  const updatedRegs = [...registrations]
+                  const idx = updatedRegs.findIndex(r => r.id === selectedRegistration.id)
+                  if (idx === -1) throw new Error('not found')
+
+                  updatedRegs[idx] = {
+                    ...updatedRegs[idx],
+                    registrationProducts: editableProducts,
+                    updatedAt: new Date().toISOString()
+                  }
+
+                  await saveBazaarData({ ...bazaarData, registrations: updatedRegs })
+                  Swal.fire({
+                    title: 'Berhasil',
+                    html: changeText || 'Tidak ada perubahan',
+                    icon: 'success'
+                  })
+
+                  setViewModalOpen(false)
+                } catch (err) {
+                  console.error(err)
+                  Swal.fire('Error', 'Failed update stock', 'error')
+                }
+              }}
+            >
+              Save Stock
+            </Button>
+          )}
+          <Button color="secondary" onClick={() => setViewModalOpen(false)}>
+            Close
+          </Button>
+        </ModalFooter>
       </Modal>
 
       <Modal isOpen={fixModalOpen} toggle={() => {
