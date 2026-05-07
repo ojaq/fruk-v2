@@ -264,6 +264,94 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const syncRegistrationProducts = async (registrationId, products = []) => {
+    if (!Array.isArray(products)) return
+
+    const { data: existingProducts, error: existingErr } = await supabase
+      .from('registration_products')
+      .select('*')
+      .eq('registration_id', registrationId)
+      .eq('is_deleted', false)
+
+    if (existingErr) throw existingErr
+
+    const existingBySnapshotId = new Map(
+      existingProducts.map(p => [p.id, p])
+    )
+
+    const existingByProductId = new Map(
+      existingProducts
+        .filter(p => p.product_id)
+        .map(p => [p.product_id, p])
+    )
+
+    const touchedIds = new Set()
+
+    for (const p of products) {
+      const normalized = {
+        registration_id: registrationId,
+        channel: p.channel,
+        nama_produk: p.nama_produk || p.namaProduk || p.label || null,
+        jenis_produk: p.jenis_produk || p.jenisProduk || null,
+        keterangan: p.keterangan || null,
+        satuan: p.satuan || null,
+        ukuran: p.ukuran || null,
+        hjk: p.hjk || null,
+        hpp: p.hpp || null,
+        image_url: p.image_url || p.imageUrl || null,
+        offline_stock: p.offline_stock ?? p.offlineStock ?? null,
+        product_id: p.product_id || p.productId || null,
+        is_active: p.isActive === undefined ? true : p.isActive,
+        is_deleted: false
+      }
+
+      let existing = null
+
+      if (p.id && existingBySnapshotId.has(p.id)) {
+        existing = existingBySnapshotId.get(p.id)
+      }
+
+      else if (
+        normalized.product_id &&
+        existingByProductId.has(normalized.product_id)
+      ) {
+        existing = existingByProductId.get(normalized.product_id)
+      }
+
+      if (existing) {
+        touchedIds.add(existing.id)
+
+        const { error: updateErr } = await supabase
+          .from('registration_products')
+          .update(normalized)
+          .eq('id', existing.id)
+
+        if (updateErr) throw updateErr
+      } else {
+        const { data: inserted, error: insertErr } = await supabase
+          .from('registration_products')
+          .insert([normalized])
+          .select()
+          .single()
+
+        if (insertErr) throw insertErr
+
+        touchedIds.add(inserted.id)
+      }
+    }
+
+    for (const existing of existingProducts) {
+      if (!touchedIds.has(existing.id)) {
+        const { error: deleteErr } = await supabase
+          .from('registration_products')
+          .update({ is_deleted: true })
+          .eq('id', existing.id)
+
+        if (deleteErr) throw deleteErr
+      }
+    }
+  }
+
   const saveBazaarData = async (newBazaarData) => {
     try {
       const incomingAnns = (newBazaarData?.announcements || []).slice()
@@ -327,9 +415,17 @@ export const AuthProvider = ({ children }) => {
         const payload = {
           announcement_id: reg.announcementId,
           supplier_id: (() => {
-            const u = users.find(x => x.name === reg.supplierName || x.nama_supplier === reg.supplierName || x.namaSupplier === reg.supplierName) || users.find(x => x.id === reg.supplierId)
+            const u =
+              users.find(
+                x =>
+                  x.name === reg.supplierName ||
+                  x.nama_supplier === reg.supplierName ||
+                  x.namaSupplier === reg.supplierName
+              ) || users.find(x => x.id === reg.supplierId)
+
             return u ? u.id : reg.supplierId || null
           })(),
+
           status: reg.status,
           notes: reg.notes || null,
           adminNotes: reg.adminNotes || null,
@@ -337,73 +433,66 @@ export const AuthProvider = ({ children }) => {
           participate_offline: reg.participateOffline || false,
           use_same_products: reg.useSameProducts || false,
           offline_stock: reg.offlineStock || null,
+
           reviewed_by: (() => {
             const u = users.find(x => x.name === reg.reviewedBy)
             return u ? u.id : null
           })(),
+
           is_deleted: reg.isDeleted || false
         }
 
         if (reg.id && existingRegIds.includes(reg.id)) {
-          await supabase.from('registrations').update(payload).eq('id', reg.id)
+          await supabase
+            .from('registrations')
+            .update(payload)
+            .eq('id', reg.id)
+
           if (Array.isArray(reg.registrationProducts)) {
-            if (reg.registrationProducts.length > 0) {
-              await supabase.from('registration_products').delete().eq('registration_id', reg.id)
-              const newProducts = reg.registrationProducts.map(p => ({
-                registration_id: reg.id,
-                channel: p.channel,
-                nama_produk: p.nama_produk || p.namaProduk || p.label || null,
-                jenis_produk: p.jenis_produk || p.jenisProduk || null,
-                keterangan: p.keterangan || null,
-                satuan: p.satuan || null,
-                ukuran: p.ukuran || null,
-                hjk: p.hjk || null,
-                hpp: p.hpp || null,
-                image_url: p.image_url || p.imageUrl || null,
-                offline_stock: p.offline_stock ?? p.offlineStock ?? null,
-                product_id: p.product_id || p.productId || p.id || null,
-                is_active: p.isActive === undefined ? true : p.isActive,
-                is_deleted: false
-              }))
-              await supabase.from('registration_products').insert(newProducts)
-            }
+            await syncRegistrationProducts(
+              reg.id,
+              reg.registrationProducts
+            )
           }
-        } else {
-          let { data: newReg, error: regErr } = await supabase.from('registrations').insert([payload]).select().single()
+        }
+
+        else {
+          let { data: newReg, error: regErr } = await supabase
+            .from('registrations')
+            .insert([payload])
+            .select()
+            .single()
+
           if (regErr && regErr.code === '23505') {
-            // Revive existing unique row (announcement_id + supplier_id) instead of failing a new registration.
-            const { data: existingReg, error: existingErr } = await supabase
-              .from('registrations')
-              .select('id')
-              .eq('announcement_id', payload.announcement_id)
-              .eq('supplier_id', payload.supplier_id)
-              .maybeSingle()
+            const { data: existingReg, error: existingErr } =
+              await supabase
+                .from('registrations')
+                .select('id')
+                .eq('announcement_id', payload.announcement_id)
+                .eq('supplier_id', payload.supplier_id)
+                .maybeSingle()
+
             if (existingErr) throw existingErr
             if (!existingReg?.id) throw regErr
-            await supabase.from('registrations').update({ ...payload, is_deleted: false }).eq('id', existingReg.id)
+
+            await supabase
+              .from('registrations')
+              .update({
+                ...payload,
+                is_deleted: false
+              })
+              .eq('id', existingReg.id)
+
             newReg = { id: existingReg.id }
           } else if (regErr) {
             throw regErr
           }
-          if (Array.isArray(reg.registrationProducts) && reg.registrationProducts.length > 0) {
-            await supabase.from('registration_products').delete().eq('registration_id', newReg.id)
-            const inserts = reg.registrationProducts.map(p => ({
-              registration_id: newReg.id,
-              channel: p.channel,
-              nama_produk: p.nama_produk || p.namaProduk || p.label || null,
-              jenis_produk: p.jenis_produk || p.jenisProduk || null,
-              keterangan: p.keterangan || null,
-              satuan: p.satuan || null,
-              ukuran: p.ukuran || null,
-              hjk: p.hjk || null,
-              hpp: p.hpp || null,
-              image_url: p.image_url || p.imageUrl || null,
-              offline_stock: p.offline_stock ?? p.offlineStock ?? null,
-              product_id: p.product_id || p.productId || p.id || null
-            }))
-            if (inserts.length) {
-              await supabase.from('registration_products').insert(inserts)
-            }
+
+          if (Array.isArray(reg.registrationProducts)) {
+            await syncRegistrationProducts(
+              newReg.id,
+              reg.registrationProducts
+            )
           }
         }
       }
