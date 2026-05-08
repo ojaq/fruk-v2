@@ -383,7 +383,7 @@ const WeekOffline = () => {
       const invalidStatusMethod = validItems.some(item => !item.status || (item.status === 'lunas' && !item.method))
       const hasOpenBillItem = validItems.some(item => item.status === 'open_bill')
       const normalizedPemesan = (pemesan || '').trim()
-      const effectivePemesan = hasOpenBillItem ? normalizedPemesan : 'Tanpa Nama'
+      const effectivePemesan = normalizedPemesan || 'Tanpa Nama'
 
       if (!validItems.length || invalidStatusMethod || (hasOpenBillItem && !normalizedPemesan)) {
         Swal.fire('Gagal', 'Semua field * wajib diisi', 'error')
@@ -886,6 +886,19 @@ const WeekOffline = () => {
     { label: 'Transfer', value: 'transfer' }
   ]
 
+  const totalProduk = (form.items || []).reduce(
+    (acc, item) => acc + Number(item.jumlah || 0),
+    0
+  )
+
+  const totalBelanja = (form.items || []).reduce(
+    (acc, item) => {
+      const harga = item.hargaSatuan || item.data?.hjk || 0
+      return acc + (Number(item.jumlah || 0) * getAdjustedHJK(harga))
+    },
+    0
+  )
+
   return (
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
       <Row className="mb-3">
@@ -1183,6 +1196,23 @@ const WeekOffline = () => {
                 </div>
               )
             })}
+
+            <Row className="mb-3">
+  <Col xs="12">
+    <div className="border rounded p-3 bg-light">
+      <div>
+        <strong>Total Produk:</strong> {totalProduk}
+      </div>
+
+      <div>
+        <strong>Total Belanja:</strong>{' '}
+        Rp{totalBelanja.toLocaleString('id-ID', {
+          maximumFractionDigits: 0
+        })}
+      </div>
+    </div>
+  </Col>
+</Row>
 
             <Row className="mb-3">
               <Col xs="12">
