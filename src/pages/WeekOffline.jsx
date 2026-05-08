@@ -1198,21 +1198,21 @@ const WeekOffline = () => {
             })}
 
             <Row className="mb-3">
-  <Col xs="12">
-    <div className="border rounded p-3 bg-light">
-      <div>
-        <strong>Total Produk:</strong> {totalProduk}
-      </div>
+              <Col xs="12">
+                <div className="border rounded p-3 bg-light">
+                  <div>
+                    <strong>Total Produk:</strong> {totalProduk}
+                  </div>
 
-      <div>
-        <strong>Total Belanja:</strong>{' '}
-        Rp{totalBelanja.toLocaleString('id-ID', {
-          maximumFractionDigits: 0
-        })}
-      </div>
-    </div>
-  </Col>
-</Row>
+                  <div>
+                    <strong>Total Belanja:</strong>{' '}
+                    Rp{totalBelanja.toLocaleString('id-ID', {
+                      maximumFractionDigits: 0
+                    })}
+                  </div>
+                </div>
+              </Col>
+            </Row>
 
             <Row className="mb-3">
               <Col xs="12">
