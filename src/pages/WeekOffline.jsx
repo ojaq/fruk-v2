@@ -1034,7 +1034,7 @@ const WeekOffline = () => {
                     setForm((f) => ({ ...f, pemesan: e.target.value }))
                   }}
                   disabled={loading || isAllWeek}
-                  placeholder={form.items.some(item => item.status === 'open_bill') ? 'Isi nama pemesan' : 'Jika semua lunas akan disimpan sebagai Tanpa Nama'}
+                  placeholder={form.items.some(item => item.status === 'open_bill') ? 'Isi nama pemesan' : 'Jika kosong akan disimpan sebagai Tanpa Nama'}
                   list={!isAllWeek ? 'pemesan-suggestions-offline' : undefined}
                 />
                 {!isAllWeek && (
