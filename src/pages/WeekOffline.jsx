@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext'
 import { useAppUi } from '../context/AppUiContext'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import ExcelJS from 'exceljs'
 
 const WeekOffline = () => {
   const { productData, registeredUsers, bazaarData, createOrder, fetchOrders, weeks, orders } = useAuth()
@@ -899,6 +900,150 @@ const WeekOffline = () => {
     0
   )
 
+  const formatUtc7 = (timestamp) => {
+    if (!timestamp) return ''
+    const date = new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return ''
+    return date.toLocaleString('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    })
+  }
+
+  const getExportData = () => {
+    const data = []
+    filtered.forEach(group => {
+      const groupTotalQty = group.items.reduce((sum, item) => sum + Number(item.jumlah || 0), 0)
+      const groupTotalPrice = group.items.reduce((sum, item) => sum + Number(item.bayar || item.total_harga || 0), 0)
+      
+      group.items.forEach((item, index) => {
+        const hargaSatuan = Number(item.harga_satuan || item.hargaSatuan || item.data?.hjk || 0)
+        const jumlahProduk = Number(item.jumlah || 0)
+        const totalHarga = Number(item.bayar || item.total_harga || jumlahProduk * hargaSatuan)
+        data.push({
+          type: 'item',
+          pemesan: index === 0 ? (group.pemesan || 'Tanpa Nama') : '',
+          produk: item.produkLabel || item.label || item.registration_products?.nama_produk || '',
+          harga_satuan: hargaSatuan,
+          jumlah_produk: jumlahProduk,
+          total_harga: totalHarga,
+          status: item.status || '',
+          metode_bayar: item.method || '',
+          jam: formatUtc7(item.created_at)
+        })
+      })
+      
+      data.push({
+        type: 'subtotal',
+        pemesan: `Total ${group.pemesan || 'Tanpa Nama'}`,
+        produk: '',
+        harga_satuan: '',
+        jumlah_produk: groupTotalQty,
+        total_harga: groupTotalPrice,
+        status: '',
+        metode_bayar: '',
+        jam: ''
+      })
+    })
+    return data
+  }
+
+  const handleExportCsv = async () => {
+    const data = getExportData()
+    if (!data.length) {
+      Swal.fire('Info', 'Tidak ada data untuk diekspor', 'info')
+      return
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet('Offline Orders')
+
+      const headerRow = ['PEMESAN', 'PRODUK', 'HARGA SATUAN', 'JUMLAH PRODUK', 'TOTAL HARGA', 'STATUS', 'METODE BAYAR', 'JAM']
+      worksheet.addRow(headerRow)
+
+      const headerFormatting = {
+        font: { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 },
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF808080' } },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+      }
+
+      worksheet.getRow(1).eachCell((cell) => {
+        cell.font = headerFormatting.font
+        cell.fill = headerFormatting.fill
+        cell.alignment = headerFormatting.alignment
+        cell.border = headerFormatting.border
+      })
+
+      data.forEach((row) => {
+        const excelRow = worksheet.addRow([
+          row.pemesan,
+          row.produk,
+          row.harga_satuan,
+          row.jumlah_produk,
+          row.total_harga,
+          row.status,
+          row.metode_bayar,
+          row.jam
+        ])
+
+        excelRow.eachCell((cell, colNumber) => {
+          cell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true }
+          cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+
+          if (row.type === 'subtotal') {
+            cell.font = { bold: false, color: { argb: 'FF000000' } }
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } }
+          }
+
+          if ([3, 4, 5].includes(colNumber)) {
+            cell.numFmt = '#,##0'
+          }
+        })
+      })
+
+      worksheet.columns = [
+        { width: 20 },
+        { width: 35 },
+        { width: 18 },
+        { width: 18 },
+        { width: 18 },
+        { width: 12 },
+        { width: 15 },
+        { width: 18 }
+      ]
+
+      worksheet.getRow(1).height = 25
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+
+      const announcementName = currentAnnouncement?.title || currentAnnouncement?.name || 'Announcement'
+      const filename = isAllWeek
+        ? `offline-orders-all-weeks-${new Date().toISOString().slice(0, 10)}.xlsx`
+        : `W${activeWeek} - ${announcementName} - ${new Date().toISOString().slice(0, 10)}.xlsx`
+
+      link.setAttribute('download', filename)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Export error:', error)
+      Swal.fire('Error', 'Gagal mengekspor data ke Excel', 'error')
+    }
+  }
+
   return (
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
       <Row className="mb-3">
@@ -918,6 +1063,13 @@ const WeekOffline = () => {
             }}
           >
             Tambah order
+          </Button>
+          <Button
+            color="success"
+            onClick={handleExportCsv}
+            disabled={loading || !filtered.length}
+          >
+            Ekspor Data
           </Button>
           <Button color="danger" onClick={() => {
             setSearchText('')
