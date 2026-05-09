@@ -25,7 +25,6 @@ const SupplierInvoice = () => {
 
   useEffect(() => {
     const relevant = (orders || [])
-      .filter(o => o.channel === 'online')
       .filter(o => {
         if (!activeWeek) return true
         const weekCode = weeks.find(w => w.id === o.week_id)?.week_code
