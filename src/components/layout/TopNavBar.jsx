@@ -67,13 +67,15 @@ export default function TopNavBar() {
     nama_supplier: '',
     nama_bank: '',
     nama_penerima: '',
-    no_rekening: ''
+    no_rekening: '',
+    phone_number: ''
   })
   const refs = {
     nama_supplier: useRef(),
     nama_bank: useRef(),
     nama_penerima: useRef(),
-    no_rekening: useRef()
+    no_rekening: useRef(),
+    phone_number: useRef()
   }
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -106,12 +108,13 @@ export default function TopNavBar() {
       nama_supplier: user.nama_supplier ?? user.name,
       nama_bank: user.nama_bank ?? '',
       nama_penerima: user.nama_penerima ?? user.name,
-      no_rekening: user.no_rekening ?? ''
+      no_rekening: user.no_rekening ?? '',
+      phone_number: user.phone_number ?? ''
     })
   }, [user])
 
   const handleSave = async () => {
-    const { nama_supplier, nama_bank, nama_penerima, no_rekening } = form
+    const { nama_supplier, nama_bank, nama_penerima, no_rekening, phone_number } = form
     const newErrors = {}
 
     if (!nama_supplier.trim()) {
@@ -126,6 +129,7 @@ export default function TopNavBar() {
     if (!nama_bank.trim()) newErrors.nama_bank = 'Nama bank wajib diisi'
     if (!nama_penerima.trim()) newErrors.nama_penerima = 'Nama penerima wajib diisi'
     if (!no_rekening.trim()) newErrors.no_rekening = 'No rekening wajib diisi'
+    if (phone_number && !/^[0-9]+$/.test(phone_number)) newErrors.phone_number = 'Nomor telepon hanya boleh angka'
 
     setErrors(newErrors)
     const firstError = Object.keys(newErrors)[0]
@@ -141,7 +145,8 @@ export default function TopNavBar() {
           nama_supplier,
           nama_bank,
           nama_penerima,
-          no_rekening
+          no_rekening,
+          phone_number: phone_number || null
         })
         .eq('name', user.name)
 
@@ -151,7 +156,8 @@ export default function TopNavBar() {
         nama_supplier,
         nama_bank,
         nama_penerima,
-        no_rekening
+        no_rekening,
+        phone_number: phone_number || null
       }
 
       localStorage.setItem('currentUser', JSON.stringify(updatedUser))
@@ -321,7 +327,7 @@ export default function TopNavBar() {
               {errors.nama_penerima && <div className="text-danger small">{errors.nama_penerima}</div>}
             </Col>
 
-            <Col md="12">
+            <Col md="12" className="mb-3">
               <Label>No Rekening</Label>
               <Input
                 type="text"
@@ -331,6 +337,20 @@ export default function TopNavBar() {
                 onChange={(e) => setForm({ ...form, no_rekening: e.target.value })}
               />
               {errors.no_rekening && <div className="text-danger small">{errors.no_rekening}</div>}
+            </Col>
+
+            <Col md="12">
+              <Label>Nomor Telepon</Label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                innerRef={refs.phone_number}
+                invalid={!!errors.phone_number}
+                value={form.phone_number}
+                onChange={(e) => setForm({ ...form, phone_number: e.target.value.replace(/[^0-9]/g, '') })}
+              />
+              {errors.phone_number && <div className="text-danger small">{errors.phone_number}</div>}
             </Col>
           </Row>
         </ModalBody>

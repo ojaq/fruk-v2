@@ -11,7 +11,7 @@ import { supabase } from '../supabaseClient'
 import ExcelJS from 'exceljs'
 
 const WeekOffline = () => {
-  const { productData, registeredUsers, bazaarData, createOrder, fetchOrders, weeks, orders } = useAuth()
+  const { user, users, productData, registeredUsers, bazaarData, createOrder, fetchOrders, weeks, orders } = useAuth()
   const { currentWeek } = useAppUi()
   const { num } = useParams()
   const activeWeek = num ? Number(num) : currentWeek
@@ -31,10 +31,14 @@ const WeekOffline = () => {
   })
   const createInitialForm = () => ({
     pemesan: '',
+    status: '',
+    method: '',
     items: [createEmptyItem()]
   })
   const cloneForm = (source) => ({
     pemesan: source?.pemesan || '',
+    status: source?.status || '',
+    method: source?.method || '',
     items: (source?.items || []).map(item => ({
       ...createEmptyItem(),
       ...item
@@ -53,6 +57,7 @@ const WeekOffline = () => {
   const [selectedStatus, setSelectedStatus] = useState(null)
   const [selectedMethod, setSelectedMethod] = useState(null)
   const [orderModalOpen, setOrderModalOpen] = useState(false)
+  const [expandedRows, setExpandedRows] = useState(new Set())
 
   const isAllWeek = !activeWeek
 
@@ -68,6 +73,12 @@ const WeekOffline = () => {
     return (bazaarData.registrations || [])
       .filter(r => r?.announcementId === currentAnnouncement?.id && r?.status === 'approved')
   }, [bazaarData, currentAnnouncement])
+  const usersById = useMemo(() => {
+    const map = new Map()
+      ; (users || []).forEach(u => map.set(u.id, u))
+    return map
+  }, [users])
+
   const allowedProducts = useMemo(() => {
     const result = []
     approvedRegs.forEach(reg => {
@@ -95,12 +106,16 @@ const WeekOffline = () => {
   const mapOrderRow = (o) => {
     const prod = o.registration_products || {}
     const weekCode = weeks.find(w => w.id === o.week_id)?.week_code || ''
+    const createdByUser = usersById.get(o.created_by)
+    const lastEditedByUser = usersById.get(o.last_edited_by)
     return {
       ...o,
       produkLabel: `${prod.nama_produk || ''} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim(),
       registrationProductId: o.registration_product_id,
       registrationId: o.registration_id,
       supplierId: o.supplier_id,
+      createdByName: createdByUser?.nama_supplier || createdByUser?.name || o.created_by || '',
+      lastEditedByName: lastEditedByUser?.nama_supplier || lastEditedByUser?.name || o.last_edited_by || '',
       week: weekCode
     }
   }
@@ -177,13 +192,19 @@ const WeekOffline = () => {
       map.set(key, group)
     })
 
-    return Array.from(map.values()).map(group => ({
-      ...group,
-      status: group.statuses.size === 1 ? Array.from(group.statuses)[0] : '-',
-      method: group.methods.size === 1 ? Array.from(group.methods)[0] : '-',
-      statusDetail: Object.entries(group.statusCounts).map(([name, count]) => `${name} (${count})`).join(', '),
-      methodDetail: Object.entries(group.methodCounts).map(([name, count]) => `${name} (${count})`).join(', ')
-    }))
+    return Array.from(map.values()).map(group => {
+      const createdBySet = new Set(group.items.map(item => item.createdByName).filter(Boolean))
+      const lastEditedBySet = new Set(group.items.map(item => item.lastEditedByName).filter(Boolean))
+      return {
+        ...group,
+        status: group.statuses.size === 1 ? Array.from(group.statuses)[0] : '-',
+        method: group.methods.size === 1 ? Array.from(group.methods)[0] : '-',
+        statusDetail: Object.entries(group.statusCounts).map(([name, count]) => `${name} (${count})`).join(', '),
+        methodDetail: Object.entries(group.methodCounts).map(([name, count]) => `${name} (${count})`).join(', '),
+        createdBy: createdBySet.size === 1 ? Array.from(createdBySet)[0] : (createdBySet.size ? 'Multiple' : '-'),
+        lastEditedBy: lastEditedBySet.size === 1 ? Array.from(lastEditedBySet)[0] : (lastEditedBySet.size ? 'Multiple' : '-')
+      }
+    })
   }, [data, isAllWeek])
 
   const isStockExceeded = useMemo(() => {
@@ -266,6 +287,15 @@ const WeekOffline = () => {
     return num < 1000 ? num * 1000 : num
   }
 
+  const getMostExpensiveItem = (items) => {
+    if (!items || items.length === 0) return null
+    return items.reduce((max, item) => {
+      const maxTotal = Number(max.bayar || max.total_harga || Number(max.jumlah || 0) * getAdjustedHJK(max.harga_satuan || max.data?.hjk || 0))
+      const itemTotal = Number(item.bayar || item.total_harga || Number(item.jumlah || 0) * getAdjustedHJK(item.harga_satuan || item.data?.hjk || 0))
+      return itemTotal > maxTotal ? item : max
+    })
+  }
+
   const getFormItemsFromGroup = (group) => {
     return group.items.map(item => {
       const opt = produkOptions.find(o => o.registrationProductId === item.registrationProductId) || {
@@ -344,12 +374,11 @@ const WeekOffline = () => {
   const addItem = () => {
     setForm(prev => {
       const prevItems = prev.items || []
-      const lastItem = prevItems.length ? prevItems[prevItems.length - 1] : null
-      const inheritedStatusMethod = lastItem?.registrationProductId
+      const statusMethod = prev.status
         ? {
-            status: lastItem.status || '',
-            method: lastItem.status === 'lunas' ? (lastItem.method || '') : ''
-          }
+          status: prev.status,
+          method: prev.status === 'lunas' ? prev.method : ''
+        }
         : {}
 
       return {
@@ -358,7 +387,7 @@ const WeekOffline = () => {
           ...prevItems,
           {
             ...createEmptyItem(),
-            ...inheritedStatusMethod
+            ...statusMethod
           }
         ]
       }
@@ -381,10 +410,14 @@ const WeekOffline = () => {
       const validItems = (items || []).filter(item => item.registrationProductId && item.jumlah)
       const selectedProductIds = validItems.map(item => item.registrationProductId)
       const hasDuplicateProduct = new Set(selectedProductIds).size !== selectedProductIds.length
-      const invalidStatusMethod = validItems.some(item => !item.status || (item.status === 'lunas' && !item.method))
-      const hasOpenBillItem = validItems.some(item => item.status === 'open_bill')
+      const hasOpenBillItem = validItems.some(item => (item.status || (!editingOrderIds.length ? form.status : '')) === 'open_bill')
       const normalizedPemesan = (pemesan || '').trim()
       const effectivePemesan = normalizedPemesan || 'Tanpa Nama'
+      const invalidStatusMethod = validItems.some(item => {
+        const status = item.status || (!editingOrderIds.length ? form.status : '')
+        const methodValue = item.method || (!editingOrderIds.length ? form.method : '')
+        return !status || (status === 'lunas' && !methodValue)
+      })
 
       if (!validItems.length || invalidStatusMethod || (hasOpenBillItem && !normalizedPemesan)) {
         Swal.fire('Gagal', 'Semua field * wajib diisi', 'error')
@@ -416,9 +449,11 @@ const WeekOffline = () => {
         return
       }
 
-      const payloadForItem = (item) => {
+      const payloadForItem = (item, isUpdate = false) => {
         const hargaSatuan = item.hargaSatuan || item.data?.hjk || 0
         const jumlah = Number(item.jumlah || 0)
+        const status = item.status || (isUpdate ? '' : form.status)
+        const methodValue = item.method || (isUpdate ? '' : form.method)
         return {
           week_id: weekId,
           announcement_id: currentAnnouncement.id,
@@ -431,8 +466,9 @@ const WeekOffline = () => {
           harga_satuan: hargaSatuan,
           catatan: item.catatan || null,
           bayar: jumlah * getAdjustedHJK(hargaSatuan),
-          status: item.status || null,
-          method: item.status === 'lunas' ? (item.method || null) : null
+          status: status || null,
+          method: status === 'lunas' ? (methodValue || null) : null,
+          ...(isUpdate ? { last_edited_by: user?.id || null } : { created_by: user?.id || null, last_edited_by: user?.id || null })
         }
       }
 
@@ -447,11 +483,11 @@ const WeekOffline = () => {
             updatePromises.push(
               supabase
                 .from('orders')
-                .update(payloadForItem(item))
+                .update(payloadForItem(item, true))
                 .eq('id', item.orderId)
             )
           } else {
-            insertRows.push(payloadForItem(item))
+            insertRows.push(payloadForItem(item, false))
           }
         })
 
@@ -474,7 +510,7 @@ const WeekOffline = () => {
         await fetchOrders()
         Swal.fire('Berhasil', 'Order berhasil diperbarui', 'success')
       } else {
-        const inserts = validItems.map(payloadForItem)
+        const inserts = validItems.map(item => payloadForItem(item, false))
         const { error } = await supabase.from('orders').insert(inserts)
         if (error) throw error
 
@@ -742,34 +778,46 @@ const WeekOffline = () => {
   }
 
   const columns = [
-    { name: 'No', selector: (r, i) => i + 1, width: '60px', wrap: true },
+    { name: 'No', selector: (r, i) => i + 1, width: '5%', wrap: true },
     ...(isAllWeek ? [{ name: 'Minggu', selector: r => r.week, wrap: true }] : []),
-    { name: 'Pemesan', selector: r => r.pemesan, wrap: true },
+    { name: 'Pemesan', selector: r => r.pemesan, wrap: true, width: '17%' },
     {
       name: 'Produk',
-      cell: row => (
-        <div className="d-flex flex-column gap-2 py-1">
-          {row.items.map((item, idx) => {
-            const itemTotal = Number(item.bayar || Number(item.jumlah || 0) * getAdjustedHJK(item.data?.hjk || item.harga_satuan || 0))
-            const statusColor = item.status === 'lunas' ? 'success' : item.status === 'open_bill' ? 'danger' : 'secondary'
-            return (
-              <div key={item.orderId || `${item.registrationProductId}-${item.jumlah}-${idx}`} className="border rounded p-2">
-                <div className="fw-semibold">{item.produkLabel}</div>
-                <div className="small text-muted">
-                  {item.jumlah} x Rp{(item.jumlah > 0 ? itemTotal / item.jumlah : 0).toLocaleString('id-ID', { maximumFractionDigits: 0 })}
-                  {' '}= Rp{itemTotal.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+      cell: row => {
+        const key = row.orderIds ? row.orderIds.join('-') : row.pemesan
+        const isExpanded = expandedRows.has(key)
+        const mostExpensive = getMostExpensiveItem(row.items)
+        const itemsToShow = isExpanded ? row.items : (mostExpensive ? [mostExpensive] : [])
+        return (
+          <div className="d-flex flex-column gap-2 py-1 position-relative">
+            {itemsToShow.map((item, idx) => {
+              const itemTotal = Number(item.bayar || Number(item.jumlah || 0) * getAdjustedHJK(item.data?.hjk || item.harga_satuan || 0))
+              const statusColor = item.status === 'lunas' ? 'success' : item.status === 'open_bill' ? 'danger' : 'secondary'
+              return (
+                <div key={item.orderId || `${item.registrationProductId}-${item.jumlah}-${idx}`} className="border rounded p-2">
+                  <div className="fw-semibold">{item.produkLabel}</div>
+                  <div className="small text-muted">
+                    {item.jumlah} x Rp{(item.jumlah > 0 ? itemTotal / item.jumlah : 0).toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                    {' '}= Rp{itemTotal.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                  </div>
+                  <div className="d-flex gap-1 mt-1">
+                    <Badge color={statusColor}>{item.status === 'open_bill' ? 'Open Bill' : (item.status || '-')}</Badge>
+                    {item.method ? <Badge color="primary">{item.method.toUpperCase()}</Badge> : null}
+                    {!isExpanded && row.items.length > 1 && (
+                      <Badge color="secondary">
+                        +{row.items.length - 1}
+                      </Badge>
+                    )}
+                  </div>
+                  {item.catatan ? <div className="text-muted small">{item.catatan}</div> : null}
                 </div>
-                <div className="d-flex gap-1 mt-1">
-                  <Badge color={statusColor}>{item.status === 'open_bill' ? 'Open Bill' : (item.status || '-')}</Badge>
-                  {item.method ? <Badge color="primary">{item.method.toUpperCase()}</Badge> : null}
-                </div>
-                {item.catatan ? <div className="text-muted small">{item.catatan}</div> : null}
-              </div>
-            )
-          })}
-        </div>
-      ),
-      wrap: true
+              )
+            })}
+          </div>
+        )
+      },
+      wrap: true,
+      width: '23%'
     },
     {
       name: 'Total',
@@ -779,7 +827,8 @@ const WeekOffline = () => {
         return `Rp${total.toLocaleString('id-ID', { maximumFractionDigits: 0 })}`
       },
       sortable: true,
-      wrap: true
+      wrap: true,
+      width: '9%'
     },
     {
       name: 'Status',
@@ -808,7 +857,8 @@ const WeekOffline = () => {
         const config = map[row.status] || { color: 'secondary', label: row.status === '-' ? '-' : row.status }
         return <Badge color={config.color}>{config.label}</Badge>
       },
-      wrap: true
+      wrap: true,
+      width: '7%'
     },
     {
       name: 'Method',
@@ -830,24 +880,38 @@ const WeekOffline = () => {
         }
         return <Badge color="primary">{row.method.toUpperCase()}</Badge>
       },
-      wrap: true
+      wrap: true,
+      width: '8%'
+    },
+    {
+      name: 'Dibuat',
+      selector: row => row.createdBy || '-',
+      wrap: true,
+      width: '12%'
+    },
+    {
+      name: 'Terakhir Diubah',
+      selector: row => row.lastEditedBy || '-',
+      wrap: true,
+      width: '12%'
     },
     {
       name: 'Aksi',
       cell: row => (
-        <>
-          {/* <Button size="sm" color="info" className="me-2" onClick={() => handlePrintStruk(row)} disabled={loading}>
+        <div>
+          {/* <Button size="sm" color="info" className="me-2" onClick={(e) => { e.stopPropagation(); handlePrintStruk(row); }} disabled={loading}>
             <Printer size={16} />
           </Button> */}
-          <Button size="sm" color="warning" className="me-2" onClick={() => handleEdit(row)} disabled={loading || isAllWeek}>
+          <Button size="sm" color="warning" className='mb-1' onClick={(e) => { e.stopPropagation(); handleEdit(row); }} disabled={loading || isAllWeek}>
             <Edit size={16} />
           </Button>
-          <Button size="sm" color="danger" onClick={() => handleDelete(row)} disabled={loading}>
+          <Button size="sm" color="danger" onClick={(e) => { e.stopPropagation(); handleDelete(row); }} disabled={loading}>
             <Trash2 size={16} />
           </Button>
-        </>
+        </div>
       ),
-      wrap: true
+      wrap: true,
+      width: '7%'
     }
   ]
 
@@ -918,12 +982,22 @@ const WeekOffline = () => {
 
   const getExportData = () => {
     const data = []
+    let grandTotal = 0
+    let grandTotalQty = 0
+
     filtered.forEach(group => {
       const groupTotalQty = group.items.reduce((sum, item) => sum + Number(item.jumlah || 0), 0)
-      const groupTotalPrice = group.items.reduce((sum, item) => sum + Number(item.bayar || item.total_harga || 0), 0)
-      
+      const groupTotalPrice = group.items.reduce((sum, item) => {
+        const jumlahProduk = Number(item.jumlah || 0)
+        const hargaSatuanRaw = Number(item.harga_satuan || item.hargaSatuan || item.data?.hjk || 0)
+        const hargaSatuan = getAdjustedHJK(hargaSatuanRaw)
+        const totalHarga = Number(item.bayar || item.total_harga || jumlahProduk * hargaSatuan)
+        return sum + totalHarga
+      }, 0)
+
       group.items.forEach((item, index) => {
-        const hargaSatuan = Number(item.harga_satuan || item.hargaSatuan || item.data?.hjk || 0)
+        const hargaSatuanRaw = Number(item.harga_satuan || item.hargaSatuan || item.data?.hjk || 0)
+        const hargaSatuan = getAdjustedHJK(hargaSatuanRaw)
         const jumlahProduk = Number(item.jumlah || 0)
         const totalHarga = Number(item.bayar || item.total_harga || jumlahProduk * hargaSatuan)
         data.push({
@@ -935,10 +1009,12 @@ const WeekOffline = () => {
           total_harga: totalHarga,
           status: item.status || '',
           metode_bayar: item.method || '',
-          jam: formatUtc7(item.created_at)
+          jam: formatUtc7(item.created_at),
+          created_by: item.createdByName || '',
+          edited_by: item.lastEditedByName || ''
         })
       })
-      
+
       data.push({
         type: 'subtotal',
         pemesan: `Total ${group.pemesan || 'Tanpa Nama'}`,
@@ -948,9 +1024,30 @@ const WeekOffline = () => {
         total_harga: groupTotalPrice,
         status: '',
         metode_bayar: '',
-        jam: ''
+        jam: '',
+        created_by: '',
+        edited_by: ''
       })
+      grandTotal += groupTotalPrice
+      grandTotalQty += groupTotalQty
     })
+
+    if (data.length) {
+      data.push({
+        type: 'grand_total',
+        pemesan: 'TOTAL PENJUALAN',
+        produk: '',
+        harga_satuan: '',
+        jumlah_produk: grandTotalQty,
+        total_harga: grandTotal,
+        status: '',
+        metode_bayar: '',
+        jam: '',
+        created_by: '',
+        edited_by: ''
+      })
+    }
+
     return data
   }
 
@@ -965,7 +1062,7 @@ const WeekOffline = () => {
       const workbook = new ExcelJS.Workbook()
       const worksheet = workbook.addWorksheet('Offline Orders')
 
-      const headerRow = ['PEMESAN', 'PRODUK', 'HARGA SATUAN', 'JUMLAH PRODUK', 'TOTAL HARGA', 'STATUS', 'METODE BAYAR', 'JAM']
+      const headerRow = ['PEMESAN', 'PRODUK', 'HARGA SATUAN', 'JUMLAH PRODUK', 'TOTAL HARGA', 'STATUS', 'METODE BAYAR', 'JAM', 'DIBUAT OLEH', 'DIUBAH OLEH']
       worksheet.addRow(headerRow)
 
       const headerFormatting = {
@@ -991,7 +1088,9 @@ const WeekOffline = () => {
           row.total_harga,
           row.status,
           row.metode_bayar,
-          row.jam
+          row.jam,
+          row.created_by,
+          row.edited_by
         ])
 
         excelRow.eachCell((cell, colNumber) => {
@@ -1017,6 +1116,8 @@ const WeekOffline = () => {
         { width: 18 },
         { width: 12 },
         { width: 15 },
+        { width: 18 },
+        { width: 18 },
         { width: 18 }
       ]
 
@@ -1212,9 +1313,9 @@ const WeekOffline = () => {
               const selectedInOtherRows = (form.items || [])
                 .some((other, otherIndex) => otherIndex !== index && other.registrationProductId === item.registrationProductId)
               return (
-                <div key={item.orderId || index} className="border rounded p-3 mb-3 bg-light-subtle">
-                  <Row className="align-items-start g-3">
-                    <Col xs="12" md="5" className="mb-2">
+                <div key={item.orderId || index} className="border rounded p-3 mb-3 bg-light-subtle position-relative">
+                  <Row className="align-items-start">
+                    <Col xs="12" md="6" className="mb-2">
                       <Label>Produk *</Label>
                       <Select
                         options={produkOptions}
@@ -1240,8 +1341,8 @@ const WeekOffline = () => {
                               {(form.items || []).some(
                                 (other, otherIndex) => otherIndex !== index && other.registrationProductId === option.registrationProductId
                               ) && (
-                                <span className="text-warning ms-2">(sudah dipilih)</span>
-                              )}
+                                  <span className="text-warning ms-2">(sudah dipilih)</span>
+                                )}
                             </div>
                             <small className="text-muted">{option.stockText}</small>
                           </div>
@@ -1270,13 +1371,14 @@ const WeekOffline = () => {
                       />
                     </Col>
 
-                    <Col xs="6" md="1" className="text-end mb-2">
+                    <Col xs="12" md="1" className="mb-2">
                       <Button
                         color="danger"
                         size="sm"
                         type="button"
                         onClick={() => removeItem(index)}
                         disabled={loading || isAllWeek}
+                        style={{ position: 'absolute', top: 8, right: 8 }}
                       >
                         X
                       </Button>
@@ -1286,7 +1388,7 @@ const WeekOffline = () => {
                       <hr className="my-1" />
                     </Col>
 
-                    <Col xs="12" md="4" className="mb-2">
+                    <Col xs="12" md={editingOrderIds.length > 0 && 4 || 12} className="mb-2">
                       <Label>Catatan</Label>
                       <Input
                         value={item.catatan}
@@ -1296,46 +1398,50 @@ const WeekOffline = () => {
                       />
                     </Col>
 
-                    <Col xs="12" md="4" className="mb-2">
-                      <Label>Status produk *</Label>
-                      <Select
-                        options={statusOptions}
-                        value={statusOptions.find((o) => o.value === item.status) || null}
-                        onChange={(option) => {
-                          setForm((prev) => {
-                            const nextItems = [...prev.items]
-                            nextItems[index] = {
-                              ...nextItems[index],
-                              status: option ? option.value : '',
-                              method: option?.value === 'lunas' ? nextItems[index].method : ''
-                            }
-                            return { ...prev, items: nextItems }
-                          })
-                        }}
-                        placeholder="Pilih status"
-                        isDisabled={loading || isAllWeek}
-                      />
-                    </Col>
+                    {editingOrderIds.length > 0 && (
+                      <>
+                        <Col xs="12" md="4" className="mb-2">
+                          <Label>Status produk *</Label>
+                          <Select
+                            options={statusOptions}
+                            value={statusOptions.find((o) => o.value === item.status) || null}
+                            onChange={(option) => {
+                              setForm((prev) => {
+                                const nextItems = [...prev.items]
+                                nextItems[index] = {
+                                  ...nextItems[index],
+                                  status: option ? option.value : '',
+                                  method: option?.value === 'lunas' ? nextItems[index].method : ''
+                                }
+                                return { ...prev, items: nextItems }
+                              })
+                            }}
+                            placeholder="Pilih status"
+                            isDisabled={loading || isAllWeek}
+                          />
+                        </Col>
 
-                    <Col xs="12" md="4" className="mb-2">
-                      <Label>Method produk {item.status === 'lunas' ? '*' : ''}</Label>
-                      <Select
-                        options={methodOptions}
-                        value={methodOptions.find((o) => o.value === item.method) || null}
-                        onChange={(option) => {
-                          setForm((prev) => {
-                            const nextItems = [...prev.items]
-                            nextItems[index] = {
-                              ...nextItems[index],
-                              method: option ? option.value : ''
-                            }
-                            return { ...prev, items: nextItems }
-                          })
-                        }}
-                        placeholder={item.status === 'lunas' ? 'Pilih method' : 'Method hanya untuk status lunas'}
-                        isDisabled={loading || isAllWeek || item.status !== 'lunas'}
-                      />
-                    </Col>
+                        <Col xs="12" md="4" className="mb-2">
+                          <Label>Method produk {item.status === 'lunas' ? '*' : ''}</Label>
+                          <Select
+                            options={methodOptions}
+                            value={methodOptions.find((o) => o.value === item.method) || null}
+                            onChange={(option) => {
+                              setForm((prev) => {
+                                const nextItems = [...prev.items]
+                                nextItems[index] = {
+                                  ...nextItems[index],
+                                  method: option ? option.value : ''
+                                }
+                                return { ...prev, items: nextItems }
+                              })
+                            }}
+                            placeholder={item.status === 'lunas' ? 'Pilih method' : 'Method hanya untuk status lunas'}
+                            isDisabled={loading || isAllWeek || item.status !== 'lunas'}
+                          />
+                        </Col>
+                      </>
+                    )}
 
                     {(stockExceeded || selectedInOtherRows) && (
                       <Col xs="12">
@@ -1349,6 +1455,54 @@ const WeekOffline = () => {
               )
             })}
 
+            <Row className="mb-3 align-items-end g-3">
+              {!editingOrderIds.length ? (
+                <>
+                  <Col xs="12" md="4">
+                    <Label>Status semua produk *</Label>
+                    <Select
+                      options={statusOptions}
+                      value={statusOptions.find((o) => o.value === form.status) || null}
+                      onChange={(option) => {
+                        setForm((prev) => ({
+                          ...prev,
+                          status: option?.value || '',
+                          method: option?.value === 'lunas' ? prev.method : '',
+                          items: prev.items.map(item => ({
+                            ...item,
+                            status: option?.value || '',
+                            method: option?.value === 'lunas' ? item.method : ''
+                          }))
+                        }))
+                      }}
+                      placeholder="Pilih status"
+                      isDisabled={loading || isAllWeek}
+                    />
+                  </Col>
+                  <Col xs="12" md="4">
+                    <Label>Method semua produk {form.status === 'lunas' ? '*' : ''}</Label>
+                    <Select
+                      options={methodOptions}
+                      value={methodOptions.find((o) => o.value === form.method) || null}
+                      onChange={(option) => setForm((prev) => ({ ...prev, method: option?.value || '' }))}
+                      placeholder={form.status === 'lunas' ? 'Pilih method' : 'Status lunas untuk pilihan'}
+                      isDisabled={loading || isAllWeek || form.status !== 'lunas'}
+                    />
+                  </Col>
+                  <Col xs="12" md="4" className="d-flex justify-content-md-end">
+                    <Button color="success" type="button" onClick={addItem} disabled={loading || isAllWeek}>
+                      Tambah produk
+                    </Button>
+                  </Col>
+                </>
+              ) : (
+                <Col xs="12" className="d-flex justify-content-start">
+                  <Button color="success" type="button" onClick={addItem} disabled={loading || isAllWeek}>
+                    Tambah produk
+                  </Button>
+                </Col>
+              )}
+            </Row>
             <Row className="mb-3">
               <Col xs="12">
                 <div className="border rounded p-3 bg-light">
@@ -1363,14 +1517,6 @@ const WeekOffline = () => {
                     })}
                   </div>
                 </div>
-              </Col>
-            </Row>
-
-            <Row className="mb-3">
-              <Col xs="12">
-                <Button color="secondary" type="button" onClick={addItem} disabled={loading || isAllWeek}>
-                  Tambah produk
-                </Button>
               </Col>
             </Row>
           </ModalBody>
@@ -1407,6 +1553,18 @@ const WeekOffline = () => {
           highlightOnHover
           responsive
           progressPending={loading}
+          onRowClicked={(row) => {
+            const key = row.orderIds ? row.orderIds.join('-') : row.pemesan
+            setExpandedRows(prev => {
+              const newSet = new Set(prev)
+              if (newSet.has(key)) {
+                newSet.delete(key)
+              } else {
+                newSet.add(key)
+              }
+              return newSet
+            })
+          }}
         />
       </div>
     </div>

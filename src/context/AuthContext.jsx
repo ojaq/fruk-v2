@@ -703,7 +703,9 @@ export const AuthProvider = ({ children }) => {
         catatan,
         bayar,
         status: status || null,
-        method: method || null
+        method: method || null,
+        created_by: user?.id || null,
+        last_edited_by: user?.id || null
       }])
 
     if (error) {
