@@ -307,16 +307,16 @@ const SupplierInvoice = () => {
       }
     })
 
-    const staticMatched = registeredUsers.find(
-      u => u.namaSupplier?.trim().toLowerCase() === supplier.trim().toLowerCase()
-    )
-    const staticPaymentLine = staticMatched
-      ? `Pembayaran dapat dilakukan melalui:\n${(staticMatched.namaBank || '-').toUpperCase()} - ${staticMatched.noRekening || '-'}\n${staticMatched.namaPenerima || '-'}`
-      : 'Pembayaran dapat dilakukan melalui:\n-'
-    const endY = doc.lastAutoTable?.finalY || 100
-    doc.setFontSize(11)
-    doc.setFont('helvetica', 'normal')
-    doc.text(staticPaymentLine, 15, endY + 10)
+    // const staticMatched = registeredUsers.find(
+    //   u => u.namaSupplier?.trim().toLowerCase() === supplier.trim().toLowerCase()
+    // )
+    // const staticPaymentLine = staticMatched
+    //   ? `Pembayaran dapat dilakukan melalui:\n${(staticMatched.namaBank || '-').toUpperCase()} - ${staticMatched.noRekening || '-'}\n${staticMatched.namaPenerima || '-'}`
+    //   : 'Pembayaran dapat dilakukan melalui:\n-'
+    // const endY = doc.lastAutoTable?.finalY || 100
+    // doc.setFontSize(11)
+    // doc.setFont('helvetica', 'normal')
+    // doc.text(staticPaymentLine, 15, endY + 10)
 
     doc.save(`Supplier-Invoice-${activeWeek ? `Minggu-${activeWeek}` : 'Semua-Minggu'}.pdf`)
   }
@@ -470,7 +470,7 @@ const SupplierInvoice = () => {
                 <strong>Total:</strong> Rp{group.totalHarga.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
               </Col>
               <Col xs="12" md="6" className="text-end">
-                <Button color="primary" size="sm" onClick={() => sendInvoice(group.supplier, group.items, num)}>
+                <Button color="primary" size="sm" onClick={() => sendInvoice(group.supplier, group.items, activeWeek)}>
                   Generate Invoice {group.supplier}
                 </Button>
               </Col>
