@@ -73,6 +73,7 @@ export const AuthProvider = ({ children }) => {
         namaSupplier: owner?.nama_supplier || owner?.namaSupplier || owner?.name || null,
         namaBank: owner?.nama_bank || owner?.namaBank || null,
         noRekening: owner?.no_rekening || owner?.noRekening || null,
+        noTelp: owner?.phone_number || null,
         namaPenerima: owner?.nama_penerima || owner?.namaPenerima || null
       }
     })
@@ -96,6 +97,7 @@ export const AuthProvider = ({ children }) => {
         namaSupplier: u.nama_supplier || u.namaSupplier || null,
         namaBank: u.nama_bank || u.namaBank || null,
         noRekening: u.no_rekening || u.noRekening || null,
+        noTelp: u?.phone_number || null,
         namaPenerima: u.nama_penerima || u.namaPenerima || null
       }))
 

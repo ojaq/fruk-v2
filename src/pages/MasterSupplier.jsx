@@ -52,6 +52,7 @@ const MasterSupplier = () => {
             namaBank: item.namaBank,
             namaPenerima: item.namaPenerima,
             noRekening: item.noRekening,
+            noTelp: item.noTelp,
             _owner: username,
             _index: i
           })
@@ -263,6 +264,7 @@ const MasterSupplier = () => {
     { name: 'Bank', selector: row => row.namaBank || '-', wrap: true, width: "120px", },
     { name: 'Penerima', selector: row => row.namaPenerima || '-', wrap: true, width: "150px", },
     { name: 'No Rekening', selector: row => row.noRekening || '-', wrap: true, width: "150px", },
+    { name: 'No Telp', selector: row => row.noTelp || '-', wrap: true, width: "150px", },
     ...(user?.role === 'admin' || user?.role === 'dev' ? [
       {
         name: 'Aksi',
