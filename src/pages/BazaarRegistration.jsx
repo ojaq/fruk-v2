@@ -48,7 +48,7 @@ function getSupplierName(user) {
   return user?.nama_supplier || user?.name || ''
 }
 function getProductId(product) {
-  return product?.id || product?.product_id || product?.productId || null
+  return product?.product_id || product?.productId || product?.id || null
 }
 function getProductName(product) {
   return product?.nama_produk || product?.namaProduk || product?.label || ''

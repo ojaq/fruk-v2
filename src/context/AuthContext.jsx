@@ -289,6 +289,9 @@ export const AuthProvider = ({ children }) => {
 
     const touchedIds = new Set()
 
+    const updates = []
+    const inserts = []
+
     for (const p of products) {
       const normalized = {
         registration_id: registrationId,
@@ -311,9 +314,7 @@ export const AuthProvider = ({ children }) => {
 
       if (p.id && existingBySnapshotId.has(p.id)) {
         existing = existingBySnapshotId.get(p.id)
-      }
-
-      else if (
+      } else if (
         normalized.product_id &&
         existingByProductId.has(normalized.product_id)
       ) {
@@ -323,34 +324,47 @@ export const AuthProvider = ({ children }) => {
       if (existing) {
         touchedIds.add(existing.id)
 
-        const { error: updateErr } = await supabase
-          .from('registration_products')
-          .update(normalized)
-          .eq('id', existing.id)
-
-        if (updateErr) throw updateErr
+        updates.push({
+          id: existing.id,
+          ...normalized
+        })
       } else {
-        const { data: inserted, error: insertErr } = await supabase
-          .from('registration_products')
-          .insert([normalized])
-          .select()
-          .single()
-
-        if (insertErr) throw insertErr
-
-        touchedIds.add(inserted.id)
+        inserts.push(normalized)
       }
     }
 
-    for (const existing of existingProducts) {
-      if (!touchedIds.has(existing.id)) {
-        const { error: deleteErr } = await supabase
-          .from('registration_products')
-          .update({ is_deleted: true })
-          .eq('id', existing.id)
+    const deleteIds = existingProducts
+      .filter(p => !touchedIds.has(p.id))
+      .map(p => p.id)
 
-        if (deleteErr) throw deleteErr
+    if (updates.length) {
+      for (const row of updates) {
+        const { id, ...payload } = row
+
+        const { error } = await supabase
+          .from('registration_products')
+          .update(payload)
+          .eq('id', id)
+
+        if (error) throw error
       }
+    }
+
+    if (inserts.length) {
+      const { error } = await supabase
+        .from('registration_products')
+        .insert(inserts)
+
+      if (error) throw error
+    }
+
+    if (deleteIds.length) {
+      const { error } = await supabase
+        .from('registration_products')
+        .update({ is_deleted: true })
+        .in('id', deleteIds)
+
+      if (error) throw error
     }
   }
 
@@ -445,16 +459,84 @@ export const AuthProvider = ({ children }) => {
         }
 
         if (reg.id && existingRegIds.includes(reg.id)) {
-          await supabase
-            .from('registrations')
-            .update(payload)
-            .eq('id', reg.id)
+          const currentReg = registrations.find(r => r.id === reg.id)
+
+          const hasChanges =
+            JSON.stringify({
+              status: currentReg.status,
+              notes: currentReg.notes,
+              adminNotes: currentReg.adminNotes,
+              participate_online: currentReg.participate_online,
+              participate_offline: currentReg.participate_offline,
+              use_same_products: currentReg.use_same_products,
+              offline_stock: currentReg.offline_stock,
+              is_deleted: currentReg.is_deleted
+            }) !== JSON.stringify({
+              status: payload.status,
+              notes: payload.notes,
+              adminNotes: payload.adminNotes,
+              participate_online: payload.participate_online,
+              participate_offline: payload.participate_offline,
+              use_same_products: payload.use_same_products,
+              offline_stock: payload.offline_stock,
+              is_deleted: payload.is_deleted
+            })
+
+          if (hasChanges) {
+            await supabase
+              .from('registrations')
+              .update(payload)
+              .eq('id', reg.id)
+          }
 
           if (Array.isArray(reg.registrationProducts)) {
-            await syncRegistrationProducts(
-              reg.id,
-              reg.registrationProducts
-            )
+            const currentReg = registrations.find(r => r.id === reg.id)
+
+            const currentProducts = (currentReg?.registration_products || [])
+              .map(p => ({
+                channel: p.channel,
+                nama_produk: p.nama_produk,
+                jenis_produk: p.jenis_produk,
+                keterangan: p.keterangan,
+                satuan: p.satuan,
+                ukuran: p.ukuran,
+                hjk: p.hjk,
+                hpp: p.hpp,
+                image_url: p.image_url,
+                offline_stock: p.offline_stock,
+                product_id: p.product_id,
+                is_active: p.is_active,
+                is_deleted: p.is_deleted
+              }))
+              .sort((a, b) => (a.product_id || '').localeCompare(b.product_id || ''))
+
+            const incomingProducts = reg.registrationProducts
+              .map(p => ({
+                channel: p.channel,
+                nama_produk: p.nama_produk || p.namaProduk || p.label || null,
+                jenis_produk: p.jenis_produk || p.jenisProduk || null,
+                keterangan: p.keterangan || null,
+                satuan: p.satuan || null,
+                ukuran: p.ukuran || null,
+                hjk: p.hjk || null,
+                hpp: p.hpp || null,
+                image_url: p.image_url || p.imageUrl || null,
+                offline_stock: p.offline_stock ?? p.offlineStock ?? null,
+                product_id: p.product_id || p.productId || null,
+                is_active: p.isActive === undefined ? true : p.isActive,
+                is_deleted: false
+              }))
+              .sort((a, b) => (a.product_id || '').localeCompare(b.product_id || ''))
+
+            if (
+              JSON.stringify(currentProducts) !==
+              JSON.stringify(incomingProducts)
+            ) {
+              await syncRegistrationProducts(
+                reg.id,
+                reg.registrationProducts
+              )
+            }
           }
         }
 
@@ -506,7 +588,11 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-      await Promise.all([fetchAnnouncements(), fetchRegistrations(), fetchWeeks()])
+      await Promise.all([
+        fetchAnnouncements(),
+        fetchRegistrations(),
+        fetchWeeks()
+      ])
     } catch (e) {
       console.error('saveBazaarData error', e)
       Swal.fire('Error', 'Gagal menyimpan data bazaar', 'error')

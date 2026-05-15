@@ -562,6 +562,8 @@ const BazaarManagement = () => {
         filterParticipation === 'online' ? item?.participateOnline :
           filterParticipation === 'offline' ? item?.participateOffline : true
     return matchSearch && matchAnnouncement && matchStatus && matchParticipation
+  }).sort((a, b) => {
+    return new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0)
   })
 
   const stats = {
