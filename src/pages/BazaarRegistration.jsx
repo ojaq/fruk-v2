@@ -208,6 +208,8 @@ const BazaarRegistration = () => {
     return label
   }
 
+  const isEditingCurrentRegistration = editId ? registrations.find(r => r.id === editId) : null
+
   const handleSave = async () => {
     setLoading(true)
 
@@ -217,6 +219,44 @@ const BazaarRegistration = () => {
         Swal.fire('Error', 'Semua field wajib diisi!', 'error')
         setLoading(false)
         return
+      }
+
+      if (participateOnline) {
+        const onlineProducts = separateProducts
+          ? selectedProductsOnline
+          : selectedProducts
+
+        if (!onlineProducts || onlineProducts.length === 0) {
+          Swal.fire('Error', 'Produk bazaar online wajib diisi!', 'error')
+          setLoading(false)
+          return
+        }
+      }
+
+      if (participateOffline) {
+        const offlineProducts = separateProducts
+          ? selectedProductsOffline
+          : selectedProducts
+
+        if (!offlineProducts || offlineProducts.length === 0) {
+          Swal.fire('Error', 'Produk bazaar offline wajib diisi!', 'error')
+          setLoading(false)
+          return
+        }
+
+        const hasEmptyStock = offlineProducts.some(product => {
+          const stock =
+            offlineStocks[`id-${product.data?.id}`] ??
+            offlineStocks[`offline-${product.label}`]
+
+          return stock === undefined || stock === null || stock === ''
+        })
+
+        if (hasEmptyStock) {
+          Swal.fire('Error', 'Semua stok produk offline wajib diisi!', 'error')
+          setLoading(false)
+          return
+        }
       }
 
       const announcement = announcements.find(a => a.id === announcementId)
@@ -310,19 +350,32 @@ const BazaarRegistration = () => {
 
         if (regsErr) throw regsErr
 
-        const activeRegs = (latestRegs || []).filter(r => ['pending', 'approved'].includes(r.status))
+        const activeRegs = registrations.filter(r =>
+          r?.announcementId === currentAnnouncement?.id &&
+          ['pending', 'approved'].includes(r?.status)
+        )
 
-        const onlineSuppliers = new Set(activeRegs.filter(r => r.participate_online).map(r => {
-          const u = users.find(x => x.id === r.supplier_id)
-          return u ? u.name : r.supplier_id
-        }))
-        const offlineSuppliers = new Set(activeRegs.filter(r => r.participate_offline).map(r => {
-          const u = users.find(x => x.id === r.supplier_id)
-          return u ? u.name : r.supplier_id
-        }))
+        const otherRegs = activeRegs.filter(r => r.id !== editId)
 
-        const onlineFull = onlineSuppliers.size >= maxSuppliersOnline
-        const offlineFull = offlineSuppliers.size >= maxSuppliersOffline
+        const onlineSuppliers = new Set(
+          otherRegs
+            .filter(r => r?.participateOnline)
+            .map(r => r?.supplierName)
+        )
+
+        const offlineSuppliers = new Set(
+          otherRegs
+            .filter(r => r?.participateOffline)
+            .map(r => r?.supplierName)
+        )
+
+        const onlineFull =
+          !form.participateOnline &&
+          onlineSuppliers.size >= maxSuppliersOnline
+
+        const offlineFull =
+          !form.participateOffline &&
+          offlineSuppliers.size >= maxSuppliersOffline
 
         if ((onlineFull && participateOnline) || (offlineFull && participateOffline)) {
           Swal.fire('Penuh', 'Kuota bazaar sudah penuh, silakan pilih mode lain.', 'warning')
@@ -375,7 +428,7 @@ const BazaarRegistration = () => {
           }
           if (channel === 'offline' || channel === 'both') {
             const val = (stockKeyId && offlineStocks[stockKeyId]) ? offlineStocks[stockKeyId] : offlineStocks[stockKeyLabel]
-            item.offline_stock = val ? parseInt(val) : null
+            item.offline_stock = val !== undefined && val !== null && val !== '' ? parseInt(val) : null
           } else {
             item.offline_stock = null
           }
@@ -452,7 +505,7 @@ const BazaarRegistration = () => {
             hjk: data.hjk || null,
             hpp: data.hpp || null,
             image_url: getProductImage(data),
-            offline_stock: stockVal ? parseInt(stockVal) : null,
+            offline_stock: stockVal !== undefined && stockVal !== null && stockVal !== '' ? parseInt(stockVal) : null,
             product_id: getProductId(data)
           })
         })
@@ -586,6 +639,9 @@ const BazaarRegistration = () => {
     })
     setOfflineStocks(offlineStocksMap)
 
+    setSeparateProducts(
+      selectedProductsOnline.length > 0 || selectedProductsOffline.length > 0
+    )
     setForm({
       announcementId: row.announcementId,
       supplierName: row.supplierName,
@@ -601,17 +657,6 @@ const BazaarRegistration = () => {
     setEditIndex(index)
     setEditId(row.id)
     setModalOpen(true)
-    setSeparateProducts(
-      selectedProductsOnline.length > 0 || selectedProductsOffline.length > 0
-    )
-
-    setTimeout(() => {
-      setForm(f => ({
-        ...f,
-        participateOnline: row.participateOnline,
-        participateOffline: row.participateOffline
-      }))
-    }, 0)
   }
 
   const handleView = (row) => {
@@ -815,13 +860,15 @@ const BazaarRegistration = () => {
   useEffect(() => {
     if (
       loading ||
-      !form.announcementId ||
-      onlineFull ||
-      offlineFull
+      !form.announcementId
     ) {
       setSeparateProducts(false)
+      return
     }
-  }, [loading, form.announcementId, onlineFull, offlineFull])
+    if (!editId && (onlineFull || offlineFull)) {
+      setSeparateProducts(false)
+    }
+  }, [loading, form.announcementId, onlineFull, offlineFull, editId])
 
   return (
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
@@ -1049,7 +1096,7 @@ const BazaarRegistration = () => {
                 {form.selectedProductsOffline.length > 0 && (
                   <Row>
                     <Col xs="12" className="mb-3">
-                      <Label>Stok Produk Offline</Label>
+                      <Label>Stok Produk Offline *</Label>
                       <div className="border-top border-bottom p-3">
                         {form.selectedProductsOffline.map((product, idx) => (
                           <Row key={idx} className="mb-2">

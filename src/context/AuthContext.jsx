@@ -281,10 +281,10 @@ export const AuthProvider = ({ children }) => {
       existingProducts.map(p => [p.id, p])
     )
 
-    const existingByProductId = new Map(
+    const existingByProductChannel = new Map(
       existingProducts
         .filter(p => p.product_id)
-        .map(p => [p.product_id, p])
+        .map(p => [`${p.product_id}::${p.channel}`, p])
     )
 
     const touchedIds = new Set()
@@ -316,9 +316,9 @@ export const AuthProvider = ({ children }) => {
         existing = existingBySnapshotId.get(p.id)
       } else if (
         normalized.product_id &&
-        existingByProductId.has(normalized.product_id)
+        existingByProductChannel.has(`${normalized.product_id}::${normalized.channel}`)
       ) {
-        existing = existingByProductId.get(normalized.product_id)
+        existing = existingByProductChannel.get(`${normalized.product_id}::${normalized.channel}`)
       }
 
       if (existing) {
