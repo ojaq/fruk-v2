@@ -398,18 +398,23 @@ const SupplierInvoice = () => {
                         }}
                       />
                     ),
-                    wrap: true
+                    wrap: true,
+                    width: '30%'
                   },
                   {
                     name: 'Pemesan',
                     cell: r => (
                       <div
                         dangerouslySetInnerHTML={{
-                          __html: highlightText(r?.pemesanCombined || '', searchText)
+                          __html: highlightText(
+                            (r?.pemesanCombined || '').replace(/,\s*/g, ',<br/>'),
+                            searchText
+                          )
                         }}
                       />
                     ),
-                    wrap: true
+                    wrap: true,
+                    width: '40%'
                   },
                   {
                     name: 'Jumlah',
@@ -420,7 +425,8 @@ const SupplierInvoice = () => {
                         }}
                       />
                     ),
-                    wrap: true
+                    wrap: true,
+                    width: '10%'
                   },
                   {
                     name: 'Harga Satuan',
@@ -437,7 +443,8 @@ const SupplierInvoice = () => {
                         />
                       )
                     },
-                    wrap: true
+                    wrap: true,
+                    width: '10%'
                   },
                   {
                     name: 'Total Harga',
@@ -454,7 +461,8 @@ const SupplierInvoice = () => {
                         />
                       )
                     },
-                    wrap: true
+                    wrap: true,
+                    width: '10%'
                   }
                 ]}
                 data={group.items}
