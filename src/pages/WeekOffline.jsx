@@ -116,6 +116,8 @@ const WeekOffline = () => {
       supplierId: o.supplier_id,
       createdByName: createdByUser?.nama_supplier || createdByUser?.name || o.created_by || '',
       lastEditedByName: lastEditedByUser?.nama_supplier || lastEditedByUser?.name || o.last_edited_by || '',
+      createdAt: o.created_at,
+      updatedAt: o.updated_at,
       week: weekCode
     }
   }
@@ -202,7 +204,9 @@ const WeekOffline = () => {
         statusDetail: Object.entries(group.statusCounts).map(([name, count]) => `${name} (${count})`).join(', '),
         methodDetail: Object.entries(group.methodCounts).map(([name, count]) => `${name} (${count})`).join(', '),
         createdBy: createdBySet.size === 1 ? Array.from(createdBySet)[0] : (createdBySet.size ? 'Multiple' : '-'),
-        lastEditedBy: lastEditedBySet.size === 1 ? Array.from(lastEditedBySet)[0] : (lastEditedBySet.size ? 'Multiple' : '-')
+        lastEditedBy: lastEditedBySet.size === 1 ? Array.from(lastEditedBySet)[0] : (lastEditedBySet.size ? 'Multiple' : '-'),
+        created_at: group.items[0]?.created_at,
+        updated_at: group.items.map(i => i.updated_at).sort().at(-1)
       }
     })
   }, [data, isAllWeek])
@@ -885,13 +889,51 @@ const WeekOffline = () => {
     },
     {
       name: 'Dibuat',
-      selector: row => row.createdBy || '-',
+      cell: row => (
+        <div>
+          <div>{row.createdBy || '-'}</div>
+
+          <small
+            className='text-muted d-block'
+            style={{ fontSize: '11px', lineHeight: '1.2' }}
+          >
+            {row.created_at
+              ? new Date(row.created_at).toLocaleString('id-ID', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
+              : '-'}
+          </small>
+        </div>
+      ),
       wrap: true,
       width: '12%'
     },
     {
       name: 'Terakhir Diubah',
-      selector: row => row.lastEditedBy || '-',
+      cell: row => (
+        <div>
+          <div>{row.lastEditedBy || '-'}</div>
+
+          <small
+            className='text-muted d-block'
+            style={{ fontSize: '11px', lineHeight: '1.2' }}
+          >
+            {row.updated_at
+              ? new Date(row.updated_at).toLocaleString('id-ID', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })
+              : '-'}
+          </small>
+        </div>
+      ),
       wrap: true,
       width: '12%'
     },

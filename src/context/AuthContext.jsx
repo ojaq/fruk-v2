@@ -657,7 +657,7 @@ export const AuthProvider = ({ children }) => {
         )
       `)
       .eq('is_deleted', false)
-
+      .order('created_at', { ascending: false })
     if (error) {
       Swal.fire('Error', 'Gagal mengambil order', 'error')
       return
