@@ -233,7 +233,7 @@ const WeekOffline = () => {
 
     filtered = filtered
       .map(mapOrderRow)
-      .sort((a, b) => (a.pemesan || '').toLowerCase().localeCompare((b.pemesan || '').toLowerCase()))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
     setData(filtered)
   }, [orders, weeks, sheetName, isAllWeek])
