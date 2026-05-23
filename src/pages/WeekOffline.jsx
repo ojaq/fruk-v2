@@ -58,12 +58,25 @@ const WeekOffline = () => {
   const [selectedMethod, setSelectedMethod] = useState(null)
   const [orderModalOpen, setOrderModalOpen] = useState(false)
   const [expandedRows, setExpandedRows] = useState(new Set())
+  const [showPemesanSuggestions, setShowPemesanSuggestions] = useState(false)
 
   const isAllWeek = !activeWeek
 
-  const uniquePemesanThisWeek = !isAllWeek
-    ? [...new Set((data || []).map(d => d.pemesan))].sort((a, b) => a.localeCompare(b))
-    : []
+  const uniquePemesanThisWeek = useMemo(() => {
+    if (isAllWeek) return []
+    const weekId = weeks.find(w => w.week_code === sheetName)?.id
+    return [...new Set(
+      (orders || [])
+        .filter(o => o.week_id === weekId)
+        .map(o => (o.pemesan || '').trim())
+        .filter(Boolean)
+        .filter(name => name !== 'Tanpa Nama')
+    )].sort((a, b) => a.localeCompare(b))
+  }, [orders, weeks, sheetName, isAllWeek])
+
+  const filteredPemesanSuggestions = uniquePemesanThisWeek.filter(name =>
+    name.toLowerCase().includes((form.pemesan || '').toLowerCase())
+  )
 
   const currentAnnouncement = useMemo(() => {
     return (bazaarData.announcements || [])
@@ -1323,22 +1336,64 @@ const WeekOffline = () => {
                 <Label>
                   Pemesan {form.items.some(item => item.status === 'open_bill') ? '*' : '(opsional jika semua lunas)'}
                 </Label>
-                <Input
-                  value={form.pemesan}
-                  onChange={(e) => {
-                    setForm((f) => ({ ...f, pemesan: e.target.value }))
-                  }}
-                  disabled={loading || isAllWeek}
-                  placeholder={form.items.some(item => item.status === 'open_bill') ? 'Isi nama pemesan' : 'Jika kosong akan disimpan sebagai Tanpa Nama'}
-                  list={!isAllWeek ? 'pemesan-suggestions-offline' : undefined}
-                />
-                {!isAllWeek && (
-                  <datalist id="pemesan-suggestions-offline">
-                    {uniquePemesanThisWeek.filter(p => p !== 'Tanpa Nama').map((p, i) => (
-                      <option key={i} value={p} />
-                    ))}
-                  </datalist>
-                )}
+
+                <div style={{ position: 'relative' }}>
+                  <Input
+                    value={form.pemesan}
+                    onChange={(e) => {
+                      setForm((f) => ({ ...f, pemesan: e.target.value }))
+                      setShowPemesanSuggestions(true)
+                    }}
+                    onFocus={() => setShowPemesanSuggestions(true)}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        setShowPemesanSuggestions(false)
+                      }, 150)
+                    }}
+                    disabled={loading || isAllWeek}
+                    placeholder={
+                      form.items.some(item => item.status === 'open_bill')
+                        ? 'Isi nama pemesan'
+                        : 'Jika kosong akan disimpan sebagai Tanpa Nama'
+                    }
+                  />
+
+                  {showPemesanSuggestions &&
+                    form.pemesan &&
+                    filteredPemesanSuggestions.length > 0 && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          width: '100%',
+                          background: '#fff',
+                          border: '1px solid #ddd',
+                          borderTop: 'none',
+                          zIndex: 1000,
+                          maxHeight: '200px',
+                          overflowY: 'auto'
+                        }}
+                      >
+                        {filteredPemesanSuggestions.map((name, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              padding: '8px',
+                              cursor: 'pointer'
+                            }}
+                            onMouseDown={() => {
+                              setForm((f) => ({
+                                ...f,
+                                pemesan: name
+                              }))
+                              setShowPemesanSuggestions(false)
+                            }}
+                          >
+                            {name}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                </div>
               </Col>
             </Row>
 
