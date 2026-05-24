@@ -16,6 +16,7 @@ const SupplierInvoice = () => {
   const [grouped, setGrouped] = useState([])
   const [searchText, setSearchText] = useState('')
   const [selectedSupplier, setSelectedSupplier] = useState(null)
+  const [selectedChannel, setSelectedChannel] = useState(null)
 
   const highlightText = (text, search) => {
     if (!search) return text
@@ -43,10 +44,12 @@ const SupplierInvoice = () => {
       const label = `${prod.nama_produk || ''} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim()
       const jumlah = Number(o.jumlah)
       const hpp = Number(prod.hpp || 0)
-      const key = `${supplierName}|${label}|${o.catatan || ''}`
+      const channel = (o.channel || 'offline').toLowerCase()
+      const key = `${channel}|${supplierName}|${label}|${o.catatan || ''}`
 
       if (!supplierMap[key]) {
         supplierMap[key] = {
+          channel,
           namaSupplier: supplierName,
           produk: label + (o.catatan ? ` (${o.catatan})` : ''),
           pemesanList: {},
@@ -71,18 +74,25 @@ const SupplierInvoice = () => {
         pemesanCombined: Object.entries(item.pemesanList)
           .map(([name, qty]) => `${name}(${qty})`).join(', ')
       }
-
-      if (!bySupplier[item.namaSupplier]) bySupplier[item.namaSupplier] = []
-      bySupplier[item.namaSupplier].push(entry)
+      const supplierKey = `${item.channel}|${item.namaSupplier}`
+      if (!bySupplier[supplierKey]) {
+        bySupplier[supplierKey] = {
+          supplier: item.namaSupplier,
+          channel: item.channel,
+          items: []
+        }
+      }
+      bySupplier[supplierKey].items.push(entry)
     })
 
-    const arr = Object.entries(bySupplier).map(([supplier, list], i) => {
-      const totalQty = list.reduce((a, b) => a + b.jumlah, 0)
-      const totalHarga = list.reduce((a, b) => a + b.total, 0)
+    const arr = Object.values(bySupplier).map((group, i) => {
+      const totalQty = group.items.reduce((a, b) => a + b.jumlah, 0)
+      const totalHarga = group.items.reduce((a, b) => a + b.total, 0)
       return {
         id: i + 1,
-        supplier,
-        items: list,
+        supplier: group.supplier,
+        channel: group.channel,
+        items: group.items,
         totalQty,
         totalHarga
       }
@@ -93,7 +103,8 @@ const SupplierInvoice = () => {
     ))
   }, [orders, weeks, activeWeek, registeredUsers])
 
-  const sendInvoice = (supplier, items, weekNum) => {
+  const sendInvoice = (supplier, items, weekNum, channel) => {
+    const formattedChannel = channel.charAt(0).toUpperCase() + channel.slice(1)
     const date = new Date()
     const todayStr = date.toISOString().split('T')[0]
     const dueDate = new Date(date)
@@ -110,7 +121,7 @@ const SupplierInvoice = () => {
 
       doc.setFontSize(26)
       doc.setFont('helvetica', 'bold')
-      const title = `Supplier Invoice - ${supplier} ${weekNum ? `Minggu ke-${weekNum}` : 'Semua Minggu'}`
+      const title = `Supplier Invoice - ${supplier} - ${formattedChannel} ` + `${weekNum ? `Minggu ke-${weekNum}` : 'Semua Minggu'}`
       const wrapped = doc.splitTextToSize(title, 120)
 
       wrapped.forEach((line, i) => {
@@ -134,7 +145,7 @@ const SupplierInvoice = () => {
 
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(11)
-      doc.text(`Untuk: ${supplier}`, 15, 70)
+      doc.text(`Untuk: ${supplier} (${formattedChannel})`, 15, 70)
 
       const table = []
       let totalQty = 0
@@ -195,7 +206,7 @@ const SupplierInvoice = () => {
       doc.setFontSize(11)
       doc.setFont('helvetica', 'normal')
       doc.text('Catatan:', 15, finalY + 10)
-      doc.text(`Invoice untuk ${weekNum ? `minggu ke-${weekNum}` : 'semua minggu'}`, 15, finalY + 15)
+      doc.text(`Invoice ${formattedChannel.toLowerCase()} untuk ${ weekNum ? `minggu ke-${weekNum}` : 'semua minggu' }`, 15, finalY + 15)
 
       const matchedUser = registeredUsers.find(
         u => u.namaSupplier?.trim().toLowerCase() === supplier.trim().toLowerCase()
@@ -206,7 +217,7 @@ const SupplierInvoice = () => {
 
       doc.text(paymentLine, 15, finalY + 25)
 
-      doc.save(`Supplier Invoice - ${supplier} ${weekNum ? `Minggu ke-${weekNum}` : 'Semua Minggu'}.pdf`)
+      doc.save(`Supplier Invoice - ${supplier} - ${formattedChannel} ${ weekNum ? `Minggu ke-${weekNum}` : 'Semua Minggu' }.pdf`)
     }
   }
 
@@ -323,6 +334,7 @@ const SupplierInvoice = () => {
 
   const filteredGrouped = grouped.filter(group => {
     const matchSupplier = selectedSupplier ? group.supplier === selectedSupplier.value : true
+    const matchChannel = selectedChannel ? group.channel === selectedChannel.value : true
     const matchSearch = searchText
       ? group.items.some(item =>
         Object.values(item).some(val =>
@@ -330,8 +342,7 @@ const SupplierInvoice = () => {
         )
       )
       : true
-
-    return matchSupplier && matchSearch
+    return matchSupplier && matchChannel && matchSearch
   })
 
   return (
@@ -344,16 +355,16 @@ const SupplierInvoice = () => {
         </Col>
       </Row>
       <Row className="mb-3">
-        <Col xs="12" md="4" className="mb-2 mb-md-0">
+        <Col xs="12" md="3" className="mb-2 mb-md-0">
           <Input
             placeholder="🔍 Cari..."
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
           />
         </Col>
-        <Col xs="12" md="4" className="mb-2 mb-md-0">
+        <Col xs="12" md="3" className="mb-2 mb-md-0">
           <Select
-            options={grouped.map(g => ({ label: g.supplier, value: g.supplier }))}
+            options={[...new Map(grouped.map(g => [g.supplier, { label: g.supplier, value: g.supplier }])).values()]}
             placeholder="🔽 Filter Supplier"
             isClearable
             isSearchable
@@ -361,15 +372,28 @@ const SupplierInvoice = () => {
             onChange={setSelectedSupplier}
           />
         </Col>
-        <Col xs="6" md="2" className="mb-2 mb-md-0">
+        <Col xs="12" md="3" className="mb-2 mb-md-0">
+          <Select
+            options={[
+              { label: 'Online', value: 'online' },
+              { label: 'Offline', value: 'offline' }
+            ]}
+            placeholder="🌐 Filter Channel"
+            isClearable
+            value={selectedChannel}
+            onChange={setSelectedChannel}
+          />
+        </Col>
+        <Col xs="6" md="3" className="mb-2 mb-md-0 d-flex gap-3">
           <Button color="danger" onClick={() => {
             setSearchText('')
             setSelectedSupplier(null)
+            setSelectedChannel(null)
           }}>
             Reset Filter
           </Button>
-        </Col>
-        <Col xs="6" md="2" className="text-end">
+        {/* </Col>
+        <Col xs="6" md="2" className="text-end"> */}
           {grouped.length > 0 && (
             <Button
               color="success"
@@ -383,7 +407,9 @@ const SupplierInvoice = () => {
       {filteredGrouped.map(group => (
         <Card key={group.id} className="mb-3">
           <CardHeader className="pt-3">
-            <h5>{group.supplier}</h5>
+            <h5>
+              {group.supplier} - {group.channel.charAt(0).toUpperCase() + group.channel.slice(1)}
+            </h5>
           </CardHeader>
           <CardBody className="mb-2 p-0">
             <div className="overflow-auto">
@@ -432,8 +458,12 @@ const SupplierInvoice = () => {
                     name: 'Harga Satuan',
                     cell: r => {
                       const hpp = parseFloat(r?.hpp)
-                      const adjusted = !hpp || hpp <= 0 ? '-' :
-                        `Rp${(hpp < 1000 ? hpp * 1000 : hpp).toLocaleString('id-ID', { maximumFractionDigits: 0 })}`
+
+                      const adjusted = !hpp || hpp <= 0
+                        ? '-'
+                        : `Rp${(hpp < 1000 ? hpp * 1000 : hpp).toLocaleString('id-ID', {
+                          maximumFractionDigits: 0
+                        })}`
 
                       return (
                         <div
@@ -450,8 +480,12 @@ const SupplierInvoice = () => {
                     name: 'Total Harga',
                     cell: r => {
                       const total = parseFloat(r?.total)
-                      const adjusted = !total || total <= 0 ? '-' :
-                        `Rp${(total < 1000 ? total * 1000 : total).toLocaleString('id-ID', { maximumFractionDigits: 0 })}`
+
+                      const adjusted = !total || total <= 0
+                        ? '-'
+                        : `Rp${(total < 1000 ? total * 1000 : total).toLocaleString('id-ID', {
+                          maximumFractionDigits: 0
+                        })}`
 
                       return (
                         <div
@@ -471,14 +505,24 @@ const SupplierInvoice = () => {
               />
             </div>
           </CardBody>
+
           <CardFooter className="py-3">
             <Row>
               <Col xs="12" md="6" className="text-start mb-2 mb-md-0">
-                <strong>Total Qty:</strong> {group.totalQty} &nbsp; | &nbsp;
-                <strong>Total:</strong> Rp{group.totalHarga.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                <strong>Total Qty:</strong> {group.totalQty}
+                &nbsp; | &nbsp;
+                <strong>Total:</strong> Rp
+                {group.totalHarga.toLocaleString('id-ID', {
+                  maximumFractionDigits: 0
+                })}
               </Col>
+
               <Col xs="12" md="6" className="text-end">
-                <Button color="primary" size="sm" onClick={() => sendInvoice(group.supplier, group.items, activeWeek)}>
+                <Button
+                  color="primary"
+                  size="sm"
+                  onClick={() => sendInvoice(group.supplier, group.items, activeWeek, group.channel)}
+                >
                   Generate Invoice {group.supplier}
                 </Button>
               </Col>
