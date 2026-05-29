@@ -266,326 +266,390 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const syncRegistrationProducts = async (registrationId, products = []) => {
-    if (!Array.isArray(products)) return
+  const syncRegistrationProducts = async ({
+    registrationId,
+    registrationProducts = []
+  }) => {
+    if (!registrationId) return
 
-    const { data: existingProducts, error: existingErr } = await supabase
-      .from('registration_products')
-      .select('*')
-      .eq('registration_id', registrationId)
-      .eq('is_deleted', false)
+    const normalizedProducts = []
+    const uniqueKeys = new Set()
 
-    if (existingErr) throw existingErr
+    for (const product of registrationProducts || []) {
+      const productId =
+        product.product_id ||
+        product.productId ||
+        null
 
-    const existingBySnapshotId = new Map(
-      existingProducts.map(p => [p.id, p])
-    )
+      const channel =
+        product.channel || 'online'
 
-    const existingByProductChannel = new Map(
-      existingProducts
-        .filter(p => p.product_id)
-        .map(p => [`${p.product_id}::${p.channel}`, p])
-    )
+      const key =
+        `${productId || product.nama_produk}::${channel}`
 
-    const touchedIds = new Set()
+      if (uniqueKeys.has(key)) continue
 
-    const updates = []
-    const inserts = []
+      uniqueKeys.add(key)
 
-    for (const p of products) {
-      const normalized = {
-        registration_id: registrationId,
-        channel: p.channel,
-        nama_produk: p.nama_produk || p.namaProduk || p.label || null,
-        jenis_produk: p.jenis_produk || p.jenisProduk || null,
-        keterangan: p.keterangan || null,
-        satuan: p.satuan || null,
-        ukuran: p.ukuran || null,
-        hjk: p.hjk || null,
-        hpp: p.hpp || null,
-        image_url: p.image_url || p.imageUrl || null,
-        offline_stock: p.offline_stock ?? p.offlineStock ?? null,
-        product_id: p.product_id || p.productId || null,
-        is_active: p.isActive === undefined ? true : p.isActive,
-        is_deleted: false
+      normalizedProducts.push({
+        product_id: productId,
+        channel,
+
+        nama_produk:
+          product.nama_produk ||
+          product.namaProduk ||
+          product.label ||
+          '',
+
+        jenis_produk:
+          product.jenis_produk ||
+          product.jenisProduk ||
+          null,
+
+        keterangan:
+          product.keterangan || null,
+
+        satuan:
+          product.satuan || null,
+
+        ukuran:
+          product.ukuran || null,
+
+        hjk:
+          product.hjk !== undefined &&
+          product.hjk !== null
+            ? Number(product.hjk)
+            : 0,
+
+        hpp:
+          product.hpp !== undefined &&
+          product.hpp !== null
+            ? Number(product.hpp)
+            : 0,
+
+        image_url:
+          product.image_url ||
+          product.imageUrl ||
+          null,
+
+        offline_stock:
+          product.offline_stock !== undefined &&
+          product.offline_stock !== null
+            ? Number(product.offline_stock)
+            : null,
+
+        is_active:
+          product.is_active !== undefined
+            ? product.is_active
+            : product.isActive !== undefined
+              ? product.isActive
+              : true
+      })
+    }
+
+    const { data: existingProducts, error: existingError } =
+      await supabase
+        .from('registration_products')
+        .select('*')
+        .eq('registration_id', registrationId)
+
+    if (existingError) throw existingError
+
+    const activeExistingProducts =
+      (existingProducts || []).filter(
+        p => !p.is_deleted
+      )
+
+    const existingMap = new Map()
+
+    activeExistingProducts.forEach(product => {
+      const key =
+        `${product.product_id || product.nama_produk}::${product.channel}`
+
+      existingMap.set(key, product)
+    })
+
+    const incomingKeys = new Set()
+
+    for (const product of normalizedProducts) {
+      const key =
+        `${product.product_id || product.nama_produk}::${product.channel}`
+
+      incomingKeys.add(key)
+
+      const existing =
+        existingMap.get(key)
+
+      if (!existing) {
+        const { error: insertError } =
+          await supabase
+            .from('registration_products')
+            .insert([
+              {
+                registration_id: registrationId,
+                ...product,
+                is_deleted: false
+              }
+            ])
+
+        if (insertError) throw insertError
+
+        continue
       }
 
-      let existing = null
+      const hasChanges =
+        existing.nama_produk !== product.nama_produk ||
+        existing.jenis_produk !== product.jenis_produk ||
+        existing.keterangan !== product.keterangan ||
+        existing.satuan !== product.satuan ||
+        Number(existing.ukuran || 0) !== Number(product.ukuran || 0) ||
+        Number(existing.hjk || 0) !== Number(product.hjk || 0) ||
+        Number(existing.hpp || 0) !== Number(product.hpp || 0) ||
+        existing.image_url !== product.image_url ||
+        Number(existing.offline_stock || 0) !== Number(product.offline_stock || 0) ||
+        existing.is_active !== product.is_active
 
-      if (p.id && existingBySnapshotId.has(p.id)) {
-        existing = existingBySnapshotId.get(p.id)
-      } else if (
-        normalized.product_id &&
-        existingByProductChannel.has(`${normalized.product_id}::${normalized.channel}`)
-      ) {
-        existing = existingByProductChannel.get(`${normalized.product_id}::${normalized.channel}`)
+      if (hasChanges) {
+        const { error: updateError } =
+          await supabase
+            .from('registration_products')
+            .update({
+              ...product,
+              is_deleted: false
+            })
+            .eq('id', existing.id)
+
+        if (updateError) throw updateError
       }
+    }
 
-      if (existing) {
-        touchedIds.add(existing.id)
+    const deleteIds =
+      activeExistingProducts
+        .filter(product => {
+          const key =
+            `${product.product_id || product.nama_produk}::${product.channel}`
 
-        updates.push({
-          id: existing.id,
-          ...normalized
+          return !incomingKeys.has(key)
         })
-      } else {
-        inserts.push(normalized)
-      }
-    }
+        .map(product => product.id)
 
-    const deleteIds = existingProducts
-      .filter(p => !touchedIds.has(p.id))
-      .map(p => p.id)
-
-    if (updates.length) {
-      for (const row of updates) {
-        const { id, ...payload } = row
-
-        const { error } = await supabase
+    if (deleteIds.length > 0) {
+      const { error: deleteError } =
+        await supabase
           .from('registration_products')
-          .update(payload)
-          .eq('id', id)
+          .update({
+            is_deleted: true
+          })
+          .in('id', deleteIds)
 
-        if (error) throw error
-      }
-    }
-
-    if (inserts.length) {
-      const { error } = await supabase
-        .from('registration_products')
-        .insert(inserts)
-
-      if (error) throw error
-    }
-
-    if (deleteIds.length) {
-      const { error } = await supabase
-        .from('registration_products')
-        .update({ is_deleted: true })
-        .in('id', deleteIds)
-
-      if (error) throw error
+      if (deleteError) throw deleteError
     }
   }
 
   const saveBazaarData = async (newBazaarData) => {
     try {
-      const incomingAnns = (newBazaarData?.announcements || []).slice()
-      const existingAnnIds = (announcements || []).map(a => a.id)
-      for (const ann of incomingAnns) {
-        const payload = {
-          title: ann.title,
-          greeting: ann.greeting,
-          description: ann.description,
-          terms: ann.terms,
-          status: ann.status,
-          online_date_start: ann.onlineDateStart || null,
-          online_date_end: ann.onlineDateEnd || null,
-          offline_date: ann.offlineDate || null,
-          delivery_date: ann.deliveryDate || null,
-          delivery_time: ann.deliveryTime || null,
-          registration_deadline: ann.registrationDeadline || null,
-          max_suppliers_online: ann.maxSuppliersOnline || null,
-          max_suppliers_offline: ann.maxSuppliersOffline || null,
-          max_products_per_supplier: ann.maxProductsPerSupplier || null,
-          is_deleted: ann.isDeleted || false
-        }
+      const incomingRegs = Array.isArray(newBazaarData?.registrations)
+        ? newBazaarData.registrations
+        : []
 
-        const weekCode = ann.weekCode && typeof ann.weekCode === 'string' ? ann.weekCode : null
-        if (weekCode) {
-          let week = weeks.find(w => w.week_code === weekCode)
-          if (!week) {
-            const { data: newWeek, error } = await supabase
-              .from('weeks')
-              .insert([{ week_code: weekCode }])
-              .select()
-              .single()
-            if (error) throw error
-            week = newWeek
-            await fetchWeeks()
-          }
-          payload.week_id = week.id
-        }
-        if (ann.id) {
-          await supabase.from('announcements').update(payload).eq('id', ann.id)
-        } else {
-          payload.created_by = user?.id || null
-          await supabase.from('announcements').insert([payload])
-        }
-      }
-
-      const incomingIds = new Set(incomingAnns.map(a => a.id).filter(Boolean))
-      const deletedWeekIds = new Set()
-      for (const existing of announcements || []) {
-        if (existing && !incomingIds.has(existing.id)) {
-          await supabase
-            .from('announcements')
-            .update({ is_deleted: true })
-            .eq('id', existing.id)
-        }
-      }
-
-      const incomingRegs = (newBazaarData?.registrations || []).slice()
-      const existingRegIds = (registrations || []).map(r => r.id)
       for (const reg of incomingRegs) {
+        const announcementId = reg.announcementId || reg.announcement_id
+
+        const supplierId =
+          reg.supplierId ||
+          users.find(
+            u =>
+              u?.name === reg?.supplierName ||
+              u?.nama_supplier === reg?.supplierName
+          )?.id ||
+          null
+
+        if (!announcementId || !supplierId) continue
+
+        const announcement = announcements.find(
+          a => a.id === announcementId
+        )
+
+        if (!announcement) continue
+
         const payload = {
-          announcement_id: reg.announcementId,
-          supplier_id: (() => {
-            const u =
-              users.find(
-                x =>
-                  x.name === reg.supplierName ||
-                  x.nama_supplier === reg.supplierName ||
-                  x.namaSupplier === reg.supplierName
-              ) || users.find(x => x.id === reg.supplierId)
+          announcement_id: announcementId,
+          supplier_id: supplierId,
 
-            return u ? u.id : reg.supplierId || null
-          })(),
+          status: reg.status || 'pending',
 
-          status: reg.status,
           notes: reg.notes || null,
           adminNotes: reg.adminNotes || null,
-          participate_online: reg.participateOnline || false,
-          participate_offline: reg.participateOffline || false,
-          use_same_products: reg.useSameProducts || false,
-          offline_stock: reg.offlineStock || null,
 
-          reviewed_by: (() => {
-            const u = users.find(x => x.name === reg.reviewedBy)
-            return u ? u.id : null
-          })(),
+          participate_online:
+            !!reg.participateOnline,
 
-          is_deleted: reg.isDeleted || false
+          participate_offline:
+            !!reg.participateOffline,
+
+          use_same_products:
+            !!reg.useSameProducts,
+
+          offline_stock:
+            reg.offlineStock || null,
+
+          reviewed_by:
+            reg.reviewedBy || null,
+
+          is_deleted: false,
+
+          updated_at: new Date().toISOString()
         }
 
-        if (reg.id && existingRegIds.includes(reg.id)) {
-          const currentReg = registrations.find(r => r.id === reg.id)
+        let registrationId = reg.id || null
 
-          const hasChanges =
-            JSON.stringify({
-              status: currentReg.status,
-              notes: currentReg.notes,
-              adminNotes: currentReg.adminNotes,
-              participate_online: currentReg.participate_online,
-              participate_offline: currentReg.participate_offline,
-              use_same_products: currentReg.use_same_products,
-              offline_stock: currentReg.offline_stock,
-              is_deleted: currentReg.is_deleted
-            }) !== JSON.stringify({
-              status: payload.status,
-              notes: payload.notes,
-              adminNotes: payload.adminNotes,
-              participate_online: payload.participate_online,
-              participate_offline: payload.participate_offline,
-              use_same_products: payload.use_same_products,
-              offline_stock: payload.offline_stock,
-              is_deleted: payload.is_deleted
-            })
+        const isEditing = !!registrationId
 
-          if (hasChanges) {
+        if (!isEditing) {
+          const { data: existingRegs, error: existingError } =
             await supabase
               .from('registrations')
-              .update(payload)
-              .eq('id', reg.id)
-          }
+              .select('*')
+              .eq('announcement_id', announcementId)
+              .eq('is_deleted', false)
 
-          if (Array.isArray(reg.registrationProducts)) {
-            const currentReg = registrations.find(r => r.id === reg.id)
+          if (existingError) throw existingError
 
-            const currentProducts = (currentReg?.registration_products || [])
-              .map(p => ({
-                channel: p.channel,
-                nama_produk: p.nama_produk,
-                jenis_produk: p.jenis_produk,
-                keterangan: p.keterangan,
-                satuan: p.satuan,
-                ukuran: p.ukuran,
-                hjk: p.hjk,
-                hpp: p.hpp,
-                image_url: p.image_url,
-                offline_stock: p.offline_stock,
-                product_id: p.product_id,
-                is_active: p.is_active,
-                is_deleted: p.is_deleted
-              }))
-              .sort((a, b) => (a.product_id || '').localeCompare(b.product_id || ''))
+          const activeRegs = (existingRegs || []).filter(
+            r =>
+              r.status === 'pending' ||
+              r.status === 'approved'
+          )
 
-            const incomingProducts = reg.registrationProducts
-              .map(p => ({
-                channel: p.channel,
-                nama_produk: p.nama_produk || p.namaProduk || p.label || null,
-                jenis_produk: p.jenis_produk || p.jenisProduk || null,
-                keterangan: p.keterangan || null,
-                satuan: p.satuan || null,
-                ukuran: p.ukuran || null,
-                hjk: p.hjk || null,
-                hpp: p.hpp || null,
-                image_url: p.image_url || p.imageUrl || null,
-                offline_stock: p.offline_stock ?? p.offlineStock ?? null,
-                product_id: p.product_id || p.productId || null,
-                is_active: p.isActive === undefined ? true : p.isActive,
-                is_deleted: false
-              }))
-              .sort((a, b) => (a.product_id || '').localeCompare(b.product_id || ''))
+          const onlineSuppliers = new Set(
+            activeRegs
+              .filter(r => r.participate_online)
+              .map(r => r.supplier_id)
+          )
 
-            if (
-              JSON.stringify(currentProducts) !==
-              JSON.stringify(incomingProducts)
-            ) {
-              await syncRegistrationProducts(
-                reg.id,
-                reg.registrationProducts
+          const offlineSuppliers = new Set(
+            activeRegs
+              .filter(r => r.participate_offline)
+              .map(r => r.supplier_id)
+          )
+
+          if (
+            payload.participate_online &&
+            !onlineSuppliers.has(supplierId)
+          ) {
+            const maxOnline =
+              announcement.maxSuppliersOnline || 999999
+
+            if (onlineSuppliers.size >= maxOnline) {
+              throw new Error(
+                'Kuota bazaar online sudah penuh'
               )
             }
           }
-        }
 
-        else {
-          let { data: newReg, error: regErr } = await supabase
-            .from('registrations')
-            .insert([payload])
-            .select()
-            .single()
+          if (
+            payload.participate_offline &&
+            !offlineSuppliers.has(supplierId)
+          ) {
+            const maxOffline =
+              announcement.maxSuppliersOffline || 999999
 
-          if (regErr && regErr.code === '23505') {
-            const { data: existingReg, error: existingErr } =
-              await supabase
-                .from('registrations')
-                .select('id')
-                .eq('announcement_id', payload.announcement_id)
-                .eq('supplier_id', payload.supplier_id)
-                .maybeSingle()
+            if (offlineSuppliers.size >= maxOffline) {
+              throw new Error(
+                'Kuota bazaar offline sudah penuh'
+              )
+            }
+          }
 
-            if (existingErr) throw existingErr
-            if (!existingReg?.id) throw regErr
-
+          const { data: insertedReg, error: insertError } =
             await supabase
               .from('registrations')
-              .update({
-                ...payload,
-                is_deleted: false
-              })
-              .eq('id', existingReg.id)
+              .insert([
+                {
+                  ...payload,
+                  created_at: new Date().toISOString()
+                }
+              ])
+              .select()
+              .single()
 
-            newReg = { id: existingReg.id }
-          } else if (regErr) {
-            throw regErr
-          }
+          if (insertError) throw insertError
 
-          if (Array.isArray(reg.registrationProducts)) {
-            await syncRegistrationProducts(
-              newReg.id,
-              reg.registrationProducts
-            )
-          }
+          registrationId = insertedReg.id
+        } else {
+          const { error: updateError } = await supabase
+            .from('registrations')
+            .update(payload)
+            .eq('id', registrationId)
+
+          if (updateError) throw updateError
         }
-      }
 
-      const incomingRegIds = new Set(incomingRegs.map(r => r.id).filter(Boolean))
-      for (const existing of registrations || []) {
-        if (existing && !incomingRegIds.has(existing.id)) {
-          await supabase.from('registrations').update({ is_deleted: true }).eq('id', existing.id)
+        const rawProducts =
+          reg.registrationProducts || []
+
+        const dedupedProducts = []
+
+        const seen = new Set()
+
+        for (const product of rawProducts) {
+          const productId =
+            product.product_id ||
+            product.productId ||
+            product.id ||
+            null
+
+          const channel =
+            product.channel || 'online'
+
+          const key = `${productId || product.nama_produk}::${channel}`
+
+          if (seen.has(key)) continue
+
+          seen.add(key)
+
+          dedupedProducts.push(product)
         }
+
+        const maxProducts =
+          announcement.maxProductsPerSupplier || 3
+
+        const onlineProductsCount =
+          dedupedProducts.filter(
+            p =>
+              p.channel === 'online' ||
+              p.channel === 'both'
+          ).length
+
+        const offlineProductsCount =
+          dedupedProducts.filter(
+            p =>
+              p.channel === 'offline' ||
+              p.channel === 'both'
+          ).length
+
+        if (
+          payload.participate_online &&
+          onlineProductsCount > maxProducts
+        ) {
+          throw new Error(
+            `Produk online melebihi batas (${maxProducts})`
+          )
+        }
+
+        if (
+          payload.participate_offline &&
+          offlineProductsCount > maxProducts
+        ) {
+          throw new Error(
+            `Produk offline melebihi batas (${maxProducts})`
+          )
+        }
+
+        await syncRegistrationProducts({
+          registrationId,
+          registrationProducts: dedupedProducts
+        })
       }
 
       await Promise.all([
@@ -595,7 +659,13 @@ export const AuthProvider = ({ children }) => {
       ])
     } catch (e) {
       console.error('saveBazaarData error', e)
-      Swal.fire('Error', 'Gagal menyimpan data bazaar', 'error')
+
+      Swal.fire(
+        'Error',
+        e?.message || 'Gagal menyimpan data bazaar',
+        'error'
+      )
+
       throw e
     }
   }

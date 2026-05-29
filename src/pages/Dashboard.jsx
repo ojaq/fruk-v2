@@ -293,7 +293,7 @@ const Dashboard = () => {
                           {ann?.title || 'Pengumuman'} · {ann?.weekCode || ''}
                         </div>
                       </div>
-                      <div className="d-flex gap-2 flex-shrink-0">
+                      {/* <div className="d-flex gap-2 flex-shrink-0">
                         <Button
                           size="sm"
                           color="success"
@@ -313,7 +313,7 @@ const Dashboard = () => {
                         >
                           <X size={16} /> Tolak
                         </Button>
-                      </div>
+                      </div> */}
                     </li>
                   )
                 })}

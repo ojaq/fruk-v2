@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import moment from "moment"
 import 'moment/locale/id'
 moment.locale('id')
+import { supabase } from '../supabaseClient'
 
 const MONTHS_ID = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -45,7 +46,7 @@ function formatDateTimeID(dateStr) {
 }
 
 const BazaarAnnouncement = () => {
-  const { user, bazaarData, saveBazaarData, weekData } = useAuth()
+  const { user, bazaarData, weekData = [] , fetchAnnouncements, fetchWeeks } = useAuth()
   const [announcements, setAnnouncements] = useState([])
   const [modalOpen, setModalOpen] = useState(false)
   const [viewModalOpen, setViewModalOpen] = useState(false)
@@ -103,80 +104,158 @@ const BazaarAnnouncement = () => {
 
   const handleSave = async () => {
     setLoading(true)
-    try {
-      const { title, greeting, description, onlineDateStart, onlineDateEnd, offlineDate, maxSuppliersOnline, maxSuppliersOffline, maxProductsPerSupplier, registrationDeadline, deliveryDate, deliveryTime, terms, status, weekCode } = form
-      if (!title || !description || !onlineDateStart || !onlineDateEnd || !offlineDate || !registrationDeadline || !deliveryDate || !weekCode) {
-        Swal.fire('Error', 'Semua field wajib diisi!', 'error')
-        setLoading(false)
-        return
-      }
-      const regDeadline = new Date(registrationDeadline)
-      const onlineStart = new Date(onlineDateStart)
-      const onlineEnd = new Date(onlineDateEnd)
-      const offline = new Date(offlineDate)
-      const delivery = new Date(deliveryDate)
-      if (isNaN(regDeadline) || isNaN(onlineStart) || isNaN(onlineEnd) || isNaN(offline) || isNaN(delivery)) {
-        Swal.fire('Error', 'Format tanggal tidak valid!', 'error')
-        setLoading(false)
-        return
-      }
-      if (regDeadline > onlineStart) {
-        Swal.fire('Error', 'Deadline pendaftaran tidak boleh lebih dari tanggal mulai bazaar online!', 'error')
-        setLoading(false)
-        return
-      }
-      if (regDeadline > onlineEnd) {
-        Swal.fire('Error', 'Deadline pendaftaran tidak boleh lebih dari tanggal selesai bazaar online!', 'error')
-        setLoading(false)
-        return
-      }
-      if (regDeadline > offline) {
-        Swal.fire('Error', 'Deadline pendaftaran tidak boleh lebih dari tanggal bazaar offline!', 'error')
-        setLoading(false)
-        return
-      }
-      if (onlineEnd < onlineStart) {
-        Swal.fire('Error', 'Tanggal selesai bazaar online tidak boleh sebelum tanggal mulai!', 'error')
-        setLoading(false)
-        return
-      }
 
-      const newAnnouncement = {
-        ...(editIndex !== null && editingAnnouncement?.id ? { id: editingAnnouncement.id } : {}),
+    try {
+      const {
         title,
         greeting,
         description,
         onlineDateStart,
         onlineDateEnd,
         offlineDate,
-        maxSuppliersOnline: parseInt(maxSuppliersOnline),
-        maxSuppliersOffline: parseInt(maxSuppliersOffline),
-        maxProductsPerSupplier: parseInt(maxProductsPerSupplier),
+        maxSuppliersOnline,
+        maxSuppliersOffline,
+        maxProductsPerSupplier,
         registrationDeadline,
         deliveryDate,
         deliveryTime,
         terms,
         status,
-        weekCode,
-        createdAt: editIndex !== null ? editingAnnouncement?.createdAt : new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        createdBy: user.name
+        weekCode
+      } = form
+
+      if (
+        !title ||
+        !description ||
+        !onlineDateStart ||
+        !onlineDateEnd ||
+        !offlineDate ||
+        !registrationDeadline ||
+        !deliveryDate ||
+        !weekCode
+      ) {
+        Swal.fire('Error', 'Semua field wajib diisi!', 'error')
+        setLoading(false)
+        return
       }
 
-      const updated = [...announcements]
-      if (editIndex !== null && editingAnnouncement) {
-        const actualIndex = announcements.findIndex(a => a.id === editingAnnouncement.id)
-        if (actualIndex !== -1) {
-          updated[actualIndex] = newAnnouncement
-        } else {
-          updated.push(newAnnouncement)
-        }
+      const regDeadline = new Date(registrationDeadline)
+      const onlineStart = new Date(onlineDateStart)
+      const onlineEnd = new Date(onlineDateEnd)
+      const offline = new Date(offlineDate)
+      const delivery = new Date(deliveryDate)
+
+      if (
+        isNaN(regDeadline) ||
+        isNaN(onlineStart) ||
+        isNaN(onlineEnd) ||
+        isNaN(offline) ||
+        isNaN(delivery)
+      ) {
+        Swal.fire('Error', 'Format tanggal tidak valid!', 'error')
+        setLoading(false)
+        return
+      }
+
+      if (regDeadline > onlineStart) {
+        Swal.fire('Error', 'Deadline pendaftaran tidak boleh lebih dari tanggal mulai bazaar online!', 'error')
+        setLoading(false)
+        return
+      }
+
+      if (regDeadline > onlineEnd) {
+        Swal.fire('Error', 'Deadline pendaftaran tidak boleh lebih dari tanggal selesai bazaar online!', 'error')
+        setLoading(false)
+        return
+      }
+
+      if (regDeadline > offline) {
+        Swal.fire('Error', 'Deadline pendaftaran tidak boleh lebih dari tanggal bazaar offline!', 'error')
+        setLoading(false)
+        return
+      }
+
+      if (onlineEnd < onlineStart) {
+        Swal.fire('Error', 'Tanggal selesai bazaar online tidak boleh sebelum tanggal mulai!', 'error')
+        setLoading(false)
+        return
+      }
+
+      let weekId = null
+
+      const weeksArray = Array.isArray(weekData)
+        ? weekData
+        : Array.isArray(weekData?.weeks)
+          ? weekData.weeks
+          : []
+
+      const existingWeek = weeksArray.find(
+        w => w.weekCode === weekCode || w.week_code === weekCode
+      )
+
+      if (existingWeek) {
+        weekId = existingWeek.id
       } else {
-        updated.push(newAnnouncement)
+        const { data: newWeek, error: weekError } = await supabase
+          .from('weeks')
+          .insert([
+            {
+              week_code: weekCode
+            }
+          ])
+          .select()
+          .single()
+
+        if (weekError) throw weekError
+
+        weekId = newWeek.id
       }
 
-      await saveBazaarData({ ...bazaarData, announcements: updated })
-      Swal.fire('Berhasil', `Pengumuman berhasil ${editIndex !== null ? 'diubah' : 'ditambahkan'}`, 'success')
+      const payload = {
+        title,
+        greeting,
+        description,
+        status,
+        online_date_start: onlineDateStart,
+        online_date_end: onlineDateEnd,
+        offline_date: offlineDate,
+        delivery_date: deliveryDate,
+        delivery_time: deliveryTime,
+        registration_deadline: registrationDeadline,
+        max_suppliers_online: parseInt(maxSuppliersOnline),
+        max_suppliers_offline: parseInt(maxSuppliersOffline),
+        max_products_per_supplier: parseInt(maxProductsPerSupplier),
+        terms,
+        week_id: weekId,
+        is_deleted: false
+      }
+
+      if (editingAnnouncement?.id) {
+        const { error } = await supabase
+          .from('announcements')
+          .update(payload)
+          .eq('id', editingAnnouncement.id)
+
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('announcements')
+          .insert([
+            {
+              ...payload,
+              created_by: user?.id || null
+            }
+          ])
+
+        if (error) throw error
+      }
+
+      Swal.fire(
+        'Berhasil',
+        `Pengumuman berhasil ${editIndex !== null ? 'diubah' : 'ditambahkan'}`,
+        'success'
+      )
+
       setForm({
         title: '',
         greeting: 'Assalamu\'alaikum Warahmatullah Wabarakatuh\n\nBismillah',
@@ -191,11 +270,15 @@ const BazaarAnnouncement = () => {
         deliveryDate: '',
         deliveryTime: '08:00',
         terms: '',
-        status: 'active'
+        status: 'active',
+        weekCode: ''
       })
+
       setEditIndex(null)
       setEditingAnnouncement(null)
       setModalOpen(false)
+
+      window.location.reload()
     } catch (error) {
       console.error('Error saving announcement:', error)
       Swal.fire('Error', 'Gagal menyimpan pengumuman', 'error')
@@ -226,6 +309,7 @@ const BazaarAnnouncement = () => {
   const handleAdd = () => {
     setForm({
       title: '',
+      weekCode: '',
       greeting: 'Assalamu\'alaikum Warahmatullah Wabarakatuh\n\nBismillah',
       description: '',
       onlineDateStart: '',
@@ -248,7 +332,7 @@ const BazaarAnnouncement = () => {
   const handleDelete = async (row) => {
     const result = await Swal.fire({
       title: `Hapus pengumuman "${row.title}"?`,
-      text: 'Pengumuman ini akan dihapus secara permanen.',
+      text: 'Pengumuman ini akan dihapus.',
       icon: 'warning',
       showCancelButton: true,
       confirmButtonText: 'Hapus',
@@ -258,10 +342,22 @@ const BazaarAnnouncement = () => {
     if (!result.isConfirmed) return
 
     setLoading(true)
+
     try {
-      const updated = announcements.filter(a => a.id !== row.id)
-      await saveBazaarData({ ...bazaarData, announcements: updated })
+      const { error } = await supabase
+        .from('announcements')
+        .update({
+          is_deleted: true
+        })
+        .eq('id', row.id)
+
+      if (error) throw error
+
       Swal.fire('Dihapus!', 'Pengumuman berhasil dihapus.', 'success')
+
+      setAnnouncements(prev =>
+        prev.filter(a => a.id !== row.id)
+      )
     } catch (error) {
       console.error('Error deleting announcement:', error)
       Swal.fire('Error', 'Gagal menghapus pengumuman', 'error')

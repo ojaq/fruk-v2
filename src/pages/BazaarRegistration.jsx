@@ -214,338 +214,347 @@ const BazaarRegistration = () => {
     setLoading(true)
 
     try {
-      const { announcementId, supplierName, participateOnline, participateOffline, selectedProducts, selectedProductsOnline, selectedProductsOffline, notes } = form
-      if (!announcementId || !supplierName || (!participateOnline && !participateOffline)) {
-        Swal.fire('Error', 'Semua field wajib diisi!', 'error')
-        setLoading(false)
-        return
-      }
-
-      if (participateOnline) {
-        const onlineProducts = separateProducts
-          ? selectedProductsOnline
-          : selectedProducts
-
-        if (!onlineProducts || onlineProducts.length === 0) {
-          Swal.fire('Error', 'Produk bazaar online wajib diisi!', 'error')
-          setLoading(false)
-          return
-        }
-      }
-
-      if (participateOffline) {
-        const offlineProducts = separateProducts
-          ? selectedProductsOffline
-          : selectedProducts
-
-        if (!offlineProducts || offlineProducts.length === 0) {
-          Swal.fire('Error', 'Produk bazaar offline wajib diisi!', 'error')
-          setLoading(false)
-          return
-        }
-
-        const hasEmptyStock = offlineProducts.some(product => {
-          const stock =
-            offlineStocks[`id-${product.data?.id}`] ??
-            offlineStocks[`offline-${product.label}`]
-
-          return stock === undefined || stock === null || stock === ''
-        })
-
-        if (hasEmptyStock) {
-          Swal.fire('Error', 'Semua stok produk offline wajib diisi!', 'error')
-          setLoading(false)
-          return
-        }
-      }
-
-      const announcement = announcements.find(a => a.id === announcementId)
-      if (!announcement) {
-        Swal.fire('Error', 'Pengumuman tidak ditemukan!', 'error')
-        setLoading(false)
-        return
-      }
-
-      const maxSuppliersOnline = announcement.maxSuppliersOnline ?? 70
-      const maxSuppliersOffline = announcement.maxSuppliersOffline ?? 40
-      const maxProductsOffline = announcement.maxProductsPerSupplier || 3
-      const maxProductsOnline = (announcement.maxProductsPerSupplier || 3) * 2
-      let baseProductSetOnline = new Set()
-      let baseProductSetOffline = new Set()
-      if (separateProducts) {
-        if (participateOnline) {
-          const baseOnline = new Set((selectedProductsOnline || []).map(p => getDynamicBaseProduct(p.label, (selectedProductsOnline || []).map(x => x.label))))
-          if (baseOnline.size > maxProductsOnline) {
-            Swal.fire('Error', `Maksimum ${maxProductsOnline} produk utama untuk mode Online`, 'error')
-            setLoading(false)
-            return
-          }
-        }
-        if (participateOffline) {
-          const baseOffline = new Set((selectedProductsOffline || []).map(p => getDynamicBaseProduct(p.label, (selectedProductsOffline || []).map(x => x.label))))
-          if (baseOffline.size > maxProductsOffline) {
-            Swal.fire('Error', `Maksimum ${maxProductsOffline} produk utama untuk mode Offline`, 'error')
-            setLoading(false)
-            return
-          }
-        }
-      } else {
-        const baseAll = new Set((selectedProducts || []).map(p => getDynamicBaseProduct(p.label, (selectedProducts || []).map(x => x.label))))
-        let allowedMax = maxProductsOffline
-        if (participateOnline && !participateOffline) allowedMax = maxProductsOnline
-        else if (!participateOnline && participateOffline) allowedMax = maxProductsOffline
-        else if (participateOnline && participateOffline) allowedMax = Math.min(maxProductsOnline, maxProductsOffline)
-
-        if (baseAll.size > allowedMax) {
-          Swal.fire('Error', `Pilih maksimal ${allowedMax} produk utama sesuai mode partisipasi`, 'error')
-          setLoading(false)
-          return
-        }
-      }
-      if (separateProducts) {
-        if (participateOnline && selectedProductsOnline.length === 0) {
-          Swal.fire('Error', 'Pilih produk untuk bazaar online!', 'error')
-          setLoading(false)
-          return
-        }
-        if (participateOffline && selectedProductsOffline.length === 0) {
-          Swal.fire('Error', 'Pilih produk untuk bazaar offline!', 'error')
-          setLoading(false)
-          return
-        }
-      } else {
-        if (selectedProducts.length === 0) {
-          Swal.fire('Error', 'Pilih produk yang akan dijual!', 'error')
-          setLoading(false)
-          return
-        }
-      }
-
-      const deadline = new Date(announcement.registrationDeadline)
-      const now = new Date()
-      if (now > deadline) {
-        Swal.fire('Error', 'Pendaftaran sudah ditutup!', 'error')
-        setLoading(false)
-        return
-      }
-
-      const existingRegistration = registrations.find(r =>
-        r?.announcementId === announcementId && r?.supplierName === supplierName && r?.status !== 'rejected'
-      )
-
-      if (existingRegistration && !editId) {
-        Swal.fire('Error', 'Anda sudah terdaftar untuk bazaar ini!', 'error')
-        setLoading(false)
-        return
-      }
-
-      let updated = [...(bazaarData?.registrations || registrations || [])]
-
-      if (!editId) {
-        const { data: latestRegs, error: regsErr } = await supabase
-          .from('registrations')
-          .select('*')
-          .eq('announcement_id', announcementId)
-          .eq('is_deleted', false)
-
-        if (regsErr) throw regsErr
-
-        const activeRegs = registrations.filter(r =>
-          r?.announcementId === currentAnnouncement?.id &&
-          ['pending', 'approved'].includes(r?.status)
-        )
-
-        const otherRegs = activeRegs.filter(r => r.id !== editId)
-
-        const onlineSuppliers = new Set(
-          otherRegs
-            .filter(r => r?.participateOnline)
-            .map(r => r?.supplierName)
-        )
-
-        const offlineSuppliers = new Set(
-          otherRegs
-            .filter(r => r?.participateOffline)
-            .map(r => r?.supplierName)
-        )
-
-        const onlineFull =
-          !form.participateOnline &&
-          onlineSuppliers.size >= maxSuppliersOnline
-
-        const offlineFull =
-          !form.participateOffline &&
-          offlineSuppliers.size >= maxSuppliersOffline
-
-        if ((onlineFull && participateOnline) || (offlineFull && participateOffline)) {
-          Swal.fire('Penuh', 'Kuota bazaar sudah penuh, silakan pilih mode lain.', 'warning')
-          setLoading(false)
-          return
-        }
-
-      }
-
-      const registrationProducts = []
-      const useSameProducts = !separateProducts
-
-      if (useSameProducts) {
-        const channel = (participateOnline && participateOffline) ? 'both' : (participateOnline ? 'online' : 'offline')
-
-        const uniqueSelectedProducts = []
-        const seenIds = new Set()
-        const seenLabels = new Set()
-          ; (selectedProducts || []).forEach(p => {
-            const pid = getProductId(p.data)
-            if (pid) {
-              if (!seenIds.has(pid)) {
-                seenIds.add(pid)
-                uniqueSelectedProducts.push(p)
-              }
-            } else {
-              const label = p.label
-              if (!seenLabels.has(label)) {
-                seenLabels.add(label)
-                uniqueSelectedProducts.push(p)
-              }
-            }
-          })
-
-        uniqueSelectedProducts.forEach((p, idx) => {
-          const data = p.data || {}
-          const stockKeyLabel = `offline-${p.label}`
-          const stockKeyId = p.data && p.data.id ? `id-${p.data.id}` : null
-          const item = {
-            channel,
-            nama_produk: getProductName(data) || p.label || null,
-            jenis_produk: getProductType(data),
-            keterangan: data.keterangan || null,
-            satuan: data.satuan || null,
-            ukuran: data.ukuran || null,
-            hjk: data.hjk || null,
-            hpp: data.hpp || null,
-            image_url: getProductImage(data),
-            product_id: getProductId(data)
-          }
-          if (channel === 'offline' || channel === 'both') {
-            const val = (stockKeyId && offlineStocks[stockKeyId]) ? offlineStocks[stockKeyId] : offlineStocks[stockKeyLabel]
-            item.offline_stock = val !== undefined && val !== null && val !== '' ? parseInt(val) : null
-          } else {
-            item.offline_stock = null
-          }
-          registrationProducts.push(item)
-        })
-      } else {
-        const uniqueSelectedProductsOnline = []
-        const seenIdsOnline = new Set()
-        const seenLabelsOnline = new Set()
-          ; (selectedProductsOnline || []).forEach(p => {
-            const pid = getProductId(p.data)
-            if (pid) {
-              if (!seenIdsOnline.has(pid)) {
-                seenIdsOnline.add(pid)
-                uniqueSelectedProductsOnline.push(p)
-              }
-            } else {
-              const label = p.label
-              if (!seenLabelsOnline.has(label)) {
-                seenLabelsOnline.add(label)
-                uniqueSelectedProductsOnline.push(p)
-              }
-            }
-          })
-
-        uniqueSelectedProductsOnline.forEach(p => {
-          const data = p.data || {}
-          registrationProducts.push({
-            channel: 'online',
-            nama_produk: getProductName(data) || p.label || null,
-            jenis_produk: getProductType(data),
-            keterangan: data.keterangan || null,
-            satuan: data.satuan || null,
-            ukuran: data.ukuran || null,
-            hjk: data.hjk || null,
-            hpp: data.hpp || null,
-            image_url: getProductImage(data),
-            offline_stock: null,
-            product_id: getProductId(data)
-          })
-        })
-
-        const uniqueSelectedProductsOffline = []
-        const seenIdsOffline = new Set()
-        const seenLabelsOffline = new Set()
-          ; (selectedProductsOffline || []).forEach(p => {
-            const pid = getProductId(p.data)
-            if (pid) {
-              if (!seenIdsOffline.has(pid)) {
-                seenIdsOffline.add(pid)
-                uniqueSelectedProductsOffline.push(p)
-              }
-            } else {
-              const label = p.label
-              if (!seenLabelsOffline.has(label)) {
-                seenLabelsOffline.add(label)
-                uniqueSelectedProductsOffline.push(p)
-              }
-            }
-          })
-
-        uniqueSelectedProductsOffline.forEach((p, idx) => {
-          const data = p.data || {}
-          const stockKeyLabel = `offline-${p.label}`
-          const stockKeyId = p.data && p.data.id ? `id-${p.data.id}` : null
-          const stockVal = (stockKeyId && offlineStocks[stockKeyId]) ? offlineStocks[stockKeyId] : offlineStocks[stockKeyLabel]
-          registrationProducts.push({
-            channel: 'offline',
-            nama_produk: getProductName(data) || p.label || null,
-            jenis_produk: getProductType(data),
-            keterangan: data.keterangan || null,
-            satuan: data.satuan || null,
-            ukuran: data.ukuran || null,
-            hjk: data.hjk || null,
-            hpp: data.hpp || null,
-            image_url: getProductImage(data),
-            offline_stock: stockVal !== undefined && stockVal !== null && stockVal !== '' ? parseInt(stockVal) : null,
-            product_id: getProductId(data)
-          })
-        })
-      }
-
-      const tempId = editId ? editId : `temp-${Date.now()}`
-      const newRegistration = {
-        id: tempId,
+      const {
         announcementId,
-        supplierId: user?.id || null,
         supplierName,
         participateOnline,
         participateOffline,
-        notes,
-        status: 'pending',
-        createdAt: editId ? (registrations.find(r => r?.id === editId)?.createdAt || new Date().toISOString()) : new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        selectedProducts,
+        selectedProductsOnline,
+        selectedProductsOffline,
+        notes
+      } = form
+
+      if (
+        !announcementId ||
+        !supplierName ||
+        (!participateOnline && !participateOffline)
+      ) {
+        Swal.fire(
+          'Error',
+          'Semua field wajib diisi!',
+          'error'
+        )
+        return
+      }
+
+      const announcement = announcements.find(
+        a => a.id === announcementId
+      )
+
+      if (!announcement) {
+        Swal.fire(
+          'Error',
+          'Pengumuman tidak ditemukan!',
+          'error'
+        )
+        return
+      }
+
+      const deadline = new Date(
+        announcement.registrationDeadline
+      )
+
+      if (new Date() > deadline) {
+        Swal.fire(
+          'Error',
+          'Pendaftaran sudah ditutup!',
+          'error'
+        )
+        return
+      }
+
+      const useSameProducts = !separateProducts
+
+      let registrationProducts = []
+
+      const buildProductPayload = (
+        product,
+        channel
+      ) => {
+        const data = product.data || product
+
+        const productId = getProductId(data)
+
+        const stockKeyId = productId
+          ? `id-${productId}`
+          : null
+
+        const stockKeyLabel = `offline-${product.label}`
+
+        const offlineStock =
+          stockKeyId &&
+            offlineStocks[stockKeyId] !== undefined
+            ? offlineStocks[stockKeyId]
+            : offlineStocks[stockKeyLabel]
+
+        return {
+          channel,
+
+          product_id: productId,
+
+          nama_produk:
+            getProductName(data) ||
+            product.label ||
+            '',
+
+          jenis_produk:
+            getProductType(data),
+
+          keterangan:
+            data.keterangan || null,
+
+          satuan:
+            data.satuan || null,
+
+          ukuran:
+            data.ukuran || null,
+
+          hjk:
+            data.hjk || 0,
+
+          hpp:
+            data.hpp || 0,
+
+          image_url:
+            getProductImage(data),
+
+          offline_stock:
+            channel === 'offline' ||
+              channel === 'both'
+              ? (
+                offlineStock !== undefined &&
+                offlineStock !== null &&
+                offlineStock !== ''
+              )
+                ? Number(offlineStock)
+                : null
+              : null
+        }
+      }
+
+      if (useSameProducts) {
+        if (
+          !selectedProducts ||
+          selectedProducts.length === 0
+        ) {
+          Swal.fire(
+            'Error',
+            'Pilih produk!',
+            'error'
+          )
+          return
+        }
+
+        const channel =
+          participateOnline &&
+            participateOffline
+            ? 'both'
+            : participateOnline
+              ? 'online'
+              : 'offline'
+
+        const dedupe = new Set()
+
+        registrationProducts =
+          selectedProducts
+            .filter(product => {
+              const productId =
+                getProductId(
+                  product.data || product
+                )
+
+              const key =
+                `${productId || product.label}::${channel}`
+
+              if (dedupe.has(key)) {
+                return false
+              }
+
+              dedupe.add(key)
+
+              return true
+            })
+            .map(product =>
+              buildProductPayload(
+                product,
+                channel
+              )
+            )
+      } else {
+        const dedupe = new Set()
+
+        const onlineProducts =
+          participateOnline
+            ? selectedProductsOnline || []
+            : []
+
+        const offlineProducts =
+          participateOffline
+            ? selectedProductsOffline || []
+            : []
+
+        if (
+          participateOnline &&
+          onlineProducts.length === 0
+        ) {
+          Swal.fire(
+            'Error',
+            'Produk online wajib dipilih!',
+            'error'
+          )
+          return
+        }
+
+        if (
+          participateOffline &&
+          offlineProducts.length === 0
+        ) {
+          Swal.fire(
+            'Error',
+            'Produk offline wajib dipilih!',
+            'error'
+          )
+          return
+        }
+
+        onlineProducts.forEach(product => {
+          const productId =
+            getProductId(
+              product.data || product
+            )
+
+          const key =
+            `${productId || product.label}::online`
+
+          if (dedupe.has(key)) return
+
+          dedupe.add(key)
+
+          registrationProducts.push(
+            buildProductPayload(
+              product,
+              'online'
+            )
+          )
+        })
+
+        offlineProducts.forEach(product => {
+          const productId =
+            getProductId(
+              product.data || product
+            )
+
+          const key =
+            `${productId || product.label}::offline`
+
+          if (dedupe.has(key)) return
+
+          dedupe.add(key)
+
+          registrationProducts.push(
+            buildProductPayload(
+              product,
+              'offline'
+            )
+          )
+        })
+      }
+
+      const maxProducts =
+        announcement.maxProductsPerSupplier || 3
+
+      const onlineCount =
+        registrationProducts.filter(
+          p =>
+            p.channel === 'online' ||
+            p.channel === 'both'
+        ).length
+
+      const offlineCount =
+        registrationProducts.filter(
+          p =>
+            p.channel === 'offline' ||
+            p.channel === 'both'
+        ).length
+
+      if (
+        participateOnline &&
+        onlineCount > maxProducts
+      ) {
+        Swal.fire(
+          'Error',
+          `Maksimal ${maxProducts} produk online`,
+          'error'
+        )
+        return
+      }
+
+      if (
+        participateOffline &&
+        offlineCount > maxProducts
+      ) {
+        Swal.fire(
+          'Error',
+          `Maksimal ${maxProducts} produk offline`,
+          'error'
+        )
+        return
+      }
+
+      const hasEmptyOfflineStock =
+        registrationProducts.some(
+          p =>
+            (p.channel === 'offline' ||
+              p.channel === 'both') &&
+            (
+              p.offline_stock === null ||
+              p.offline_stock === undefined ||
+              Number.isNaN(p.offline_stock)
+            )
+        )
+
+      if (hasEmptyOfflineStock) {
+        Swal.fire(
+          'Error',
+          'Semua stok offline wajib diisi!',
+          'error'
+        )
+        return
+      }
+
+      const payload = {
+        id: editId || null,
+
+        announcementId,
+
+        supplierId: user?.id,
+
+        supplierName,
+
+        participateOnline,
+
+        participateOffline,
+
         useSameProducts,
+
+        notes,
+
+        status: 'pending',
+
         registrationProducts
       }
 
-      let isNew = false
-      let previousRegistration = null
-      if (editId) {
-        const idx = updated.findIndex(r => r?.id === editId)
-        if (idx !== -1) {
-          previousRegistration = updated[idx]
-          updated[idx] = newRegistration
-        } else {
-          updated.push(newRegistration)
-          isNew = true
-        }
-      } else {
-        updated.push(newRegistration)
-        isNew = true
-      }
+      await saveBazaarData({
+        ...bazaarData,
+        registrations: [payload]
+      })
 
-      await saveBazaarData({ ...bazaarData, registrations: updated })
-
-      Swal.fire('Berhasil', `Pendaftaran berhasil ${editId ? 'diubah' : 'ditambahkan'}`, 'success')
+      Swal.fire(
+        'Berhasil',
+        `Pendaftaran berhasil ${editId ? 'diubah' : 'ditambahkan'}`,
+        'success'
+      )
 
       setForm({
         announcementId: '',
@@ -558,14 +567,21 @@ const BazaarRegistration = () => {
         notes: '',
         status: 'pending'
       })
+
       setOfflineStocks({})
       setEditIndex(null)
       setEditId(null)
       setModalOpen(false)
       setSeparateProducts(false)
     } catch (error) {
-      console.error('Error saving registration:', error)
-      Swal.fire('Error', 'Gagal menyimpan pendaftaran', 'error')
+      console.error(error)
+
+      Swal.fire(
+        'Error',
+        error?.message ||
+        'Gagal menyimpan pendaftaran',
+        'error'
+      )
     } finally {
       setLoading(false)
     }

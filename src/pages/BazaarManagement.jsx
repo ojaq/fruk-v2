@@ -70,75 +70,56 @@ const BazaarManagement = () => {
 
       if (!status) {
         Swal.fire('Error', 'Status wajib dipilih!', 'error')
-        setLoading(false)
         return
       }
 
-      if (status === 'rejected' && (!adminNotes || !adminNotes.trim())) {
-        Swal.fire('Error', 'Alasan penolakan wajib diisi jika status Ditolak!', 'error')
-        setLoading(false)
+      if (
+        status === 'rejected' &&
+        (!adminNotes || !adminNotes.trim())
+      ) {
+        Swal.fire(
+          'Error',
+          'Alasan penolakan wajib diisi jika status Ditolak!',
+          'error'
+        )
         return
       }
 
-      const updated = [...registrations]
-      if (editIndex !== null && editingRegistration) {
-        const actualIndex = registrations.findIndex(r => r?.id === editingRegistration?.id)
-        if (actualIndex !== -1) {
-          /*
-          await logBazaarAction({
-            user,
-            action: 'edit',
-            target: 'registration',
-            targetId: editingRegistration?.id,
-            dataBefore: registrations[actualIndex],
-            dataAfter: {
-              ...registrations[actualIndex],
-              status: form.status,
-              adminNotes: form.adminNotes,
-              updatedAt: new Date().toISOString(),
-              reviewedBy: user.name
-            },
-            description: `Edit registration status to ${form.status}`
-          })
-          */
-          updated[actualIndex] = {
-            ...updated[actualIndex],
-            status: form.status,
-            adminNotes: form.adminNotes,
-            updatedAt: new Date().toISOString(),
-            reviewedBy: user.name
-          }
-        } else {
-          /*
-          await logBazaarAction({
-            user,
-            action: 'edit',
-            target: 'registration',
-            targetId: editingRegistration?.id,
-            dataBefore: updated[editIndex],
-            dataAfter: {
-              ...updated[editIndex],
-              status: form.status,
-              adminNotes: form.adminNotes,
-              updatedAt: new Date().toISOString(),
-              reviewedBy: user.name
-            },
-            description: `Edit registration status to ${form.status}`
-          })
-          */
-          updated[editIndex] = {
-            ...updated[editIndex],
-            status: form.status,
-            adminNotes: form.adminNotes,
-            updatedAt: new Date().toISOString(),
-            reviewedBy: user.name
-          }
-        }
+      if (!editingRegistration?.id) {
+        throw new Error('Registration not found')
       }
 
-      await saveBazaarData({ ...bazaarData, registrations: updated })
+      const payload = {
+        status,
+        adminNotes,
+        reviewed_by: user.id,
+        updated_at: new Date().toISOString()
+      }
 
-      Swal.fire('Berhasil', 'Status pendaftaran berhasil diubah', 'success')
+      const { error } = await supabase
+        .from('registrations')
+        .update(payload)
+        .eq('id', editingRegistration.id)
+      if (error) throw error
+
+      setRegistrations(prev =>
+        prev.map(reg =>
+          reg.id === editingRegistration.id
+            ? {
+                ...reg,
+                status,
+                adminNotes,
+                reviewedBy: user.name,
+                updatedAt: payload.updated_at
+              }
+            : reg
+        )
+      )
+      Swal.fire(
+        'Berhasil',
+        'Status pendaftaran berhasil diubah',
+        'success'
+      )
 
       setForm({
         status: '',
@@ -148,8 +129,11 @@ const BazaarManagement = () => {
       setEditingRegistration(null)
       setModalOpen(false)
     } catch (error) {
-      console.error('Error updating registration:', error)
-      Swal.fire('Error', 'Gagal mengubah status pendaftaran', 'error')
+      Swal.fire(
+        'Error',
+        'Gagal mengubah status pendaftaran',
+        'error'
+      )
     } finally {
       setLoading(false)
     }
@@ -304,7 +288,29 @@ const BazaarManagement = () => {
         reviewedBy: user.name
       }
 
-      await saveBazaarData({ ...bazaarData, registrations: updated })
+      const { error } = await supabase
+        .from('registrations')
+        .update({
+          status: 'approved',
+          reviewed_by: user.id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', row.id)
+
+      if (error) throw error
+
+      setRegistrations(prev =>
+        prev.map(r =>
+          r.id === row.id
+            ? {
+              ...r,
+              status: 'approved',
+              reviewedBy: user.name,
+              updatedAt: new Date().toISOString()
+            }
+            : r
+        )
+      )
       Swal.fire('Berhasil', 'Pendaftaran berhasil disetujui', 'success')
     } catch (error) {
       console.error('Error approving registration:', error)
@@ -363,7 +369,31 @@ const BazaarManagement = () => {
         reviewedBy: user.name
       }
 
-      await saveBazaarData({ ...bazaarData, registrations: updated })
+      const { error } = await supabase
+        .from('registrations')
+        .update({
+          status: 'rejected',
+          adminNotes: reason,
+          reviewed_by: user.id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', row.id)
+
+      if (error) throw error
+
+      setRegistrations(prev =>
+        prev.map(r =>
+          r.id === row.id
+            ? {
+              ...r,
+              status: 'rejected',
+              adminNotes: reason,
+              reviewedBy: user.name,
+              updatedAt: new Date().toISOString()
+            }
+            : r
+        )
+      )
       Swal.fire('Berhasil', 'Pendaftaran berhasil ditolak', 'success')
     } catch (error) {
       console.error('Error rejecting registration:', error)
@@ -375,7 +405,7 @@ const BazaarManagement = () => {
 
   const handleDelete = async (row) => {
     const result = await Swal.fire({
-      title: `Hapus pendaftaran?`,
+      title: 'Hapus pendaftaran?',
       text: 'Pendaftaran ini akan dihapus secara permanen.',
       icon: 'warning',
       showCancelButton: true,
@@ -387,29 +417,28 @@ const BazaarManagement = () => {
 
     setLoading(true)
     try {
-      const actualIndex = registrations.findIndex(r => r?.id === row?.id)
-      if (actualIndex === -1) {
-        Swal.fire('Error', 'Data tidak ditemukan', 'error')
-        return
-      }
-      /*
-      await logBazaarAction({
-        user,
-        action: 'delete',
-        target: 'registration',
-        targetId: row?.id,
-        dataBefore: registrations[actualIndex],
-        dataAfter: null,
-        description: 'Delete registration'
-      })
-      */
-      const updated = [...registrations]
-      updated.splice(actualIndex, 1)
-      await saveBazaarData({ ...bazaarData, registrations: updated })
-      Swal.fire('Dihapus!', 'Pendaftaran berhasil dihapus.', 'success')
+      const { error } = await supabase
+        .from('registrations')
+        .update({
+          is_deleted: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', row.id)
+      if (error) throw error
+      setRegistrations(prev =>
+        prev.filter(r => r.id !== row.id)
+      )
+      Swal.fire(
+        'Dihapus!',
+        'Pendaftaran berhasil dihapus.',
+        'success'
+      )
     } catch (error) {
-      console.error('Error deleting registration:', error)
-      Swal.fire('Error', 'Gagal menghapus pendaftaran', 'error')
+      Swal.fire(
+        'Error',
+        'Gagal menghapus pendaftaran',
+        'error'
+      )
     } finally {
       setLoading(false)
     }
@@ -1070,53 +1099,134 @@ const BazaarManagement = () => {
                 try {
                   const changes = editableProducts
                     .map(edit => {
-                      const original = selectedRegistration.registrationProducts.find(
-                        p => p.id === edit.id
-                      )
+                      const original =
+                        selectedRegistration.registrationProducts.find(
+                          p => p.id === edit.id
+                        )
+
                       if (!original) return null
-                      if (original.offline_stock !== edit.offline_stock) {
+
+                      if (
+                        Number(original.offline_stock || 0) !==
+                        Number(edit.offline_stock || 0)
+                      ) {
                         return {
-                          name: edit.nama_produk || edit.namaProduk || edit.label || 'Produk',
-                          from: original.offline_stock ?? 0,
-                          to: edit.offline_stock ?? 0
+                          id: edit.id,
+
+                          name:
+                            edit.nama_produk ||
+                            edit.namaProduk ||
+                            edit.label ||
+                            'Produk',
+
+                          from:
+                            Number(original.offline_stock || 0),
+
+                          to:
+                            Number(edit.offline_stock || 0)
                         }
                       }
+
                       return null
                     })
                     .filter(Boolean)
 
-                  const changeText = changes
-                    .map(c => `${c.name} stok diubah ${c.from} → ${c.to}`)
-                    .join('<br>')
-
-                  const updatedRegs = [...registrations]
-                  const idx = updatedRegs.findIndex(r => r.id === selectedRegistration.id)
-                  if (idx === -1) throw new Error('not found')
-
-                  updatedRegs[idx] = {
-                    ...updatedRegs[idx],
-                    registrationProducts: editableProducts,
-                    updatedAt: new Date().toISOString()
+                  if (changes.length === 0) {
+                    Swal.fire(
+                      'Info',
+                      'Tidak ada perubahan',
+                      'info'
+                    )
+                    return
                   }
 
-                  await saveBazaarData({ ...bazaarData, registrations: updatedRegs })
+                  for (const change of changes) {
+                    const { error } = await supabase
+                      .from('registration_products')
+                      .update({
+                        offline_stock: change.to
+                      })
+                      .eq('id', change.id)
+
+                    if (error) throw error
+                  }
+
+                  const { error: regError } = await supabase
+                    .from('registrations')
+                    .update({
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', selectedRegistration.id)
+
+                  if (regError) throw regError
+
+                  const updatedRegistrations =
+                    registrations.map(reg => {
+                      if (reg.id !== selectedRegistration.id) {
+                        return reg
+                      }
+
+                      return {
+                        ...reg,
+
+                        updatedAt:
+                          new Date().toISOString(),
+
+                        registrationProducts:
+                          reg.registrationProducts.map(prod => {
+                            const edited =
+                              editableProducts.find(
+                                p => p.id === prod.id
+                              )
+
+                            if (!edited) return prod
+
+                            return {
+                              ...prod,
+
+                              offline_stock:
+                                Number(
+                                  edited.offline_stock || 0
+                                )
+                            }
+                          })
+                      }
+                    })
+
+                  setRegistrations(updatedRegistrations)
+
+                  const changeText = changes
+                    .map(
+                      c =>
+                        `${c.name} stok diubah ${c.from} → ${c.to}`
+                    )
+                    .join('<br>')
+
                   Swal.fire({
                     title: 'Berhasil',
-                    html: changeText || 'Tidak ada perubahan',
+                    html: changeText,
                     icon: 'success'
                   })
 
                   setViewModalOpen(false)
                 } catch (err) {
                   console.error(err)
-                  Swal.fire('Error', 'Failed update stock', 'error')
+
+                  Swal.fire(
+                    'Error',
+                    'Failed update stock',
+                    'error'
+                  )
                 }
               }}
             >
               Save Stock
             </Button>
           )}
-          <Button color="secondary" onClick={() => setViewModalOpen(false)}>
+          <Button
+            color="secondary"
+            onClick={() => setViewModalOpen(false)}
+          >
             Close
           </Button>
         </ModalFooter>
