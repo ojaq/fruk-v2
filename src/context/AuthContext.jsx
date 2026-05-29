@@ -611,8 +611,11 @@ export const AuthProvider = ({ children }) => {
           dedupedProducts.push(product)
         }
 
-        const maxProducts =
+        const maxProductsOffline =
           announcement.maxProductsPerSupplier || 3
+
+        const maxProductsOnline =
+          (announcement.maxProductsPerSupplier || 3) * 2
 
         const onlineProductsCount =
           dedupedProducts.filter(
@@ -630,7 +633,7 @@ export const AuthProvider = ({ children }) => {
 
         if (
           payload.participate_online &&
-          onlineProductsCount > maxProducts
+          onlineProductsCount > maxProductsOnline
         ) {
           throw new Error(
             `Produk online melebihi batas (${maxProducts})`
@@ -639,7 +642,7 @@ export const AuthProvider = ({ children }) => {
 
         if (
           payload.participate_offline &&
-          offlineProductsCount > maxProducts
+          offlineProductsCount > maxProductsOffline
         ) {
           throw new Error(
             `Produk offline melebihi batas (${maxProducts})`
