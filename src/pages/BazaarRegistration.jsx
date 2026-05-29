@@ -480,11 +480,11 @@ const BazaarRegistration = () => {
 
       if (
         participateOnline &&
-        onlineCount > maxProducts
+        onlineCount > maxProductsOnline
       ) {
         Swal.fire(
           'Error',
-          `Maksimal ${maxProducts} produk online`,
+          `Maksimal ${maxProductsOnline} produk online`,
           'error'
         )
         return
@@ -492,11 +492,11 @@ const BazaarRegistration = () => {
 
       if (
         participateOffline &&
-        offlineCount > maxProducts
+        offlineCount > maxProductsOffline
       ) {
         Swal.fire(
           'Error',
-          `Maksimal ${maxProducts} produk offline`,
+          `Maksimal ${maxProductsOffline} produk offline`,
           'error'
         )
         return
