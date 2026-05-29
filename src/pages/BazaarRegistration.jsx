@@ -461,8 +461,11 @@ const BazaarRegistration = () => {
         })
       }
 
-      const maxProducts =
+      const maxProductsOffline =
         announcement.maxProductsPerSupplier || 3
+
+      const maxProductsOnline =
+        (announcement.maxProductsPerSupplier || 3) * 2
 
       const onlineCount =
         registrationProducts.filter(
