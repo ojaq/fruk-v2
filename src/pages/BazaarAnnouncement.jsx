@@ -183,33 +183,18 @@ const BazaarAnnouncement = () => {
 
       let weekId = null
 
-      const weeksArray = Array.isArray(weekData)
-        ? weekData
-        : Array.isArray(weekData?.weeks)
-          ? weekData.weeks
-          : []
-
-      const existingWeek = weeksArray.find(
-        w => w.weekCode === weekCode || w.week_code === weekCode
-      )
-
-      if (existingWeek) {
-        weekId = existingWeek.id
-      } else {
-        const { data: newWeek, error: weekError } = await supabase
+      const { data: existingWeek, error: weekLookupError } =
+        await supabase
           .from('weeks')
-          .insert([
-            {
-              week_code: weekCode
-            }
-          ])
-          .select()
+          .select('id')
+          .eq('week_code', weekCode)
           .single()
 
-        if (weekError) throw weekError
-
-        weekId = newWeek.id
+      if (weekLookupError) {
+        throw new Error(`Week ${weekCode} tidak ditemukan`)
       }
+
+      weekId = existingWeek.id
 
       const payload = {
         title,
