@@ -453,7 +453,8 @@ export const AuthProvider = ({ children }) => {
         : []
 
       for (const reg of incomingRegs) {
-        const announcementId = reg.announcementId || reg.announcement_id
+        const announcementId =
+          reg.announcementId || reg.announcement_id
 
         const supplierId =
           reg.supplierId ||
@@ -471,6 +472,39 @@ export const AuthProvider = ({ children }) => {
         )
 
         if (!announcement) continue
+
+        const rawProducts =
+          reg.registrationProducts || []
+
+        const dedupedProducts = []
+
+        const seen = new Set()
+
+        for (const product of rawProducts) {
+          const productId =
+            product.product_id ||
+            product.productId ||
+            product.id ||
+            null
+
+          const channel =
+            product.channel || 'online'
+
+          const key =
+            `${productId || product.nama_produk}::${channel}`
+
+          if (seen.has(key)) continue
+
+          seen.add(key)
+
+          dedupedProducts.push(product)
+        }
+
+        if (dedupedProducts.length === 0) {
+          throw new Error(
+            'Minimal 1 produk harus dipilih'
+          )
+        }
 
         const payload = {
           announcement_id: announcementId,
@@ -505,13 +539,17 @@ export const AuthProvider = ({ children }) => {
 
         const isEditing = !!registrationId
 
+        let createdNewRegistration = false
+
         if (!isEditing) {
-          const { data: existingRegs, error: existingError } =
-            await supabase
-              .from('registrations')
-              .select('*')
-              .eq('announcement_id', announcementId)
-              .eq('is_deleted', false)
+          const {
+            data: existingRegs,
+            error: existingError
+          } = await supabase
+            .from('registrations')
+            .select('*')
+            .eq('announcement_id', announcementId)
+            .eq('is_deleted', false)
 
           if (existingError) throw existingError
 
@@ -561,98 +599,76 @@ export const AuthProvider = ({ children }) => {
             }
           }
 
-          const { data: insertedReg, error: insertError } =
-            await supabase
-              .from('registrations')
-              .insert([
-                {
-                  ...payload,
-                  created_at: new Date().toISOString()
-                }
-              ])
-              .select()
-              .single()
+          const {
+            data: insertedReg,
+            error: insertError
+          } = await supabase
+            .from('registrations')
+            .insert([
+              {
+                ...payload,
+                created_at:
+                  new Date().toISOString()
+              }
+            ])
+            .select()
+            .single()
 
           if (insertError) throw insertError
 
           registrationId = insertedReg.id
+          createdNewRegistration = true
         } else {
-          const { error: updateError } = await supabase
-            .from('registrations')
-            .update(payload)
-            .eq('id', registrationId)
+          const { error: updateError } =
+            await supabase
+              .from('registrations')
+              .update(payload)
+              .eq('id', registrationId)
 
           if (updateError) throw updateError
         }
 
-        const rawProducts =
-          reg.registrationProducts || []
+        try {
+          await syncRegistrationProducts({
+            registrationId,
+            registrationProducts: dedupedProducts
+          })
 
-        const dedupedProducts = []
+          const {
+            count,
+            error: countError
+          } = await supabase
+            .from('registration_products')
+            .select('*', {
+              count: 'exact',
+              head: true
+            })
+            .eq(
+              'registration_id',
+              registrationId
+            )
+            .eq('is_deleted', false)
 
-        const seen = new Set()
+          if (countError) throw countError
 
-        for (const product of rawProducts) {
-          const productId =
-            product.product_id ||
-            product.productId ||
-            product.id ||
-            null
+          if (!count || count === 0) {
+            throw new Error(
+              'Tidak ada produk yang berhasil disimpan'
+            )
+          }
+        } catch (productError) {
+          if (
+            createdNewRegistration &&
+            registrationId
+          ) {
+            await supabase
+              .from('registrations')
+              .delete()
+              .eq('id', registrationId)
+          }
 
-          const channel =
-            product.channel || 'online'
-
-          const key = `${productId || product.nama_produk}::${channel}`
-
-          if (seen.has(key)) continue
-
-          seen.add(key)
-
-          dedupedProducts.push(product)
+          throw productError
         }
-
-        const maxProductsOffline =
-          announcement.maxProductsPerSupplier || 3
-
-        const maxProductsOnline =
-          (announcement.maxProductsPerSupplier || 3) * 2
-
-        const onlineProductsCount =
-          dedupedProducts.filter(
-            p =>
-              p.channel === 'online' ||
-              p.channel === 'both'
-          ).length
-
-        const offlineProductsCount =
-          dedupedProducts.filter(
-            p =>
-              p.channel === 'offline' ||
-              p.channel === 'both'
-          ).length
-
-        if (
-          payload.participate_online &&
-          onlineProductsCount > maxProductsOnline
-        ) {
-          throw new Error(
-            `Produk online melebihi batas (${maxProducts})`
-          )
-        }
-
-        if (
-          payload.participate_offline &&
-          offlineProductsCount > maxProductsOffline
-        ) {
-          throw new Error(
-            `Produk offline melebihi batas (${maxProducts})`
-          )
-        }
-
-        await syncRegistrationProducts({
-          registrationId,
-          registrationProducts: dedupedProducts
-        })
       }
 
       await Promise.all([
@@ -661,11 +677,15 @@ export const AuthProvider = ({ children }) => {
         fetchWeeks()
       ])
     } catch (e) {
-      console.error('saveBazaarData error', e)
+      console.error(
+        'saveBazaarData error',
+        e
+      )
 
       Swal.fire(
         'Error',
-        e?.message || 'Gagal menyimpan data bazaar',
+        e?.message ||
+          'Gagal menyimpan data bazaar',
         'error'
       )
 
