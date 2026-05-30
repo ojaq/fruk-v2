@@ -467,42 +467,79 @@ const BazaarRegistration = () => {
       const maxProductsOnline =
         (announcement.maxProductsPerSupplier || 3) * 2
 
-      const onlineCount =
-        registrationProducts.filter(
-          p =>
-            p.channel === 'online' ||
-            p.channel === 'both'
-        ).length
+      if (useSameProducts) {
+        const labels = selectedProducts.map(p => p.label)
 
-      const offlineCount =
-        registrationProducts.filter(
-          p =>
-            p.channel === 'offline' ||
-            p.channel === 'both'
-        ).length
-
-      if (
-        participateOnline &&
-        onlineCount > maxProductsOnline
-      ) {
-        Swal.fire(
-          'Error',
-          `Maksimal ${maxProductsOnline} produk online`,
-          'error'
+        const baseProducts = new Set(
+          labels.map(label =>
+            getDynamicBaseProduct(label, labels)
+          )
         )
-        return
-      }
 
-      if (
-        participateOffline &&
-        offlineCount > maxProductsOffline
-      ) {
-        Swal.fire(
-          'Error',
-          `Maksimal ${maxProductsOffline} produk offline`,
-          'error'
-        )
-        return
+        let allowedMax = maxProductsOffline
+
+        if (participateOnline && !participateOffline) {
+          allowedMax = maxProductsOnline
+        } else if (
+          participateOnline &&
+          participateOffline
+        ) {
+          allowedMax = Math.min(
+            maxProductsOnline,
+            maxProductsOffline
+          )
+        }
+
+        if (baseProducts.size > allowedMax) {
+          Swal.fire(
+            'Error',
+            `Pilih maksimal ${allowedMax} produk utama sesuai mode partisipasi`,
+            'error'
+          )
+          return
+        }
+      } else {
+        if (participateOnline) {
+          const labels = selectedProductsOnline.map(
+            p => p.label
+          )
+
+          const baseProducts = new Set(
+            labels.map(label =>
+              getDynamicBaseProduct(label, labels)
+            )
+          )
+
+          if (baseProducts.size > maxProductsOnline) {
+            Swal.fire(
+              'Error',
+              `Maksimal ${maxProductsOnline} produk online`,
+              'error'
+            )
+            return
+          }
+        }
+
+        if (participateOffline) {
+          const labels = selectedProductsOffline.map(
+            p => p.label
+          )
+
+          const baseProducts = new Set(
+            labels.map(label =>
+              getDynamicBaseProduct(label, labels)
+            )
+          )
+
+          if (baseProducts.size > maxProductsOffline) {
+            Swal.fire(
+              'Error',
+              `Maksimal ${maxProductsOffline} produk offline`,
+              'error'
+            )
+            return
+          }
+        }
       }
 
       const hasEmptyOfflineStock =
