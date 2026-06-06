@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { Badge, Button, Col, Form, FormGroup, Input, Label, Modal, ModalBody, ModalFooter, ModalHeader, Row } from 'reactstrap'
 import DataTable from 'react-data-table-component'
-import { Edit, Trash2, Printer } from 'react-feather'
+import { Edit, Trash2, Printer, Eye } from 'react-feather'
 import Select from 'react-select'
 import Swal from 'sweetalert2'
 import { useAuth } from '../context/AuthContext'
@@ -57,10 +57,17 @@ const WeekOffline = () => {
   const [selectedStatus, setSelectedStatus] = useState(null)
   const [selectedMethod, setSelectedMethod] = useState(null)
   const [orderModalOpen, setOrderModalOpen] = useState(false)
+  const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const [detailRow, setDetailRow] = useState(null)
+  const [detailSearchText, setDetailSearchText] = useState('')
+  const [detailSelectedStatus, setDetailSelectedStatus] = useState(null)
+  const [detailSelectedMethod, setDetailSelectedMethod] = useState(null)
   const [expandedRows, setExpandedRows] = useState(new Set())
   const [showPemesanSuggestions, setShowPemesanSuggestions] = useState(false)
 
   const isAllWeek = !activeWeek
+
+  const detailColumnThreshold = 15
 
   const uniquePemesanThisWeek = useMemo(() => {
     if (isAllWeek) return []
@@ -114,7 +121,6 @@ const WeekOffline = () => {
     })
     return result
   }, [approvedRegs])
-
 
   const mapOrderRow = (o) => {
     const prod = o.registration_products || {}
@@ -614,6 +620,82 @@ const WeekOffline = () => {
     }
   }
 
+  const hasLargeDetailGroup = (group) => {
+    return group.items.length >= detailColumnThreshold
+  }
+
+  const handleShowDetails = (group) => {
+    setDetailRow(group)
+    setDetailSearchText('')
+    setDetailSelectedStatus(null)
+    setDetailSelectedMethod(null)
+    setDetailModalOpen(true)
+  }
+
+  const handleEditOrderItem = (order) => {
+    const opt = produkOptions.find(o => o.registrationProductId === order.registrationProductId) || {
+      label: order.produkLabel || '',
+      value: order.registrationProductId || '',
+      data: {
+        hjk: order.harga_satuan || 0,
+        hpp: order.hpp || 0,
+        namaSupplier: order.supplierName || '',
+        namaProduk: order.produkLabel || '',
+        ukuran: order.registration_products?.ukuran || '',
+        satuan: order.registration_products?.satuan || ''
+      },
+      registrationProductId: order.registrationProductId,
+      registrationId: order.registrationId,
+      supplierId: order.supplierId
+    }
+
+    const item = {
+      orderId: order.id,
+      registrationProductId: order.registrationProductId,
+      registrationId: order.registrationId,
+      supplierId: order.supplierId,
+      label: opt.label,
+      data: opt.data,
+      hargaSatuan: opt.data?.hjk || 0,
+      jumlah: order.jumlah,
+      catatan: order.catatan || '',
+      status: order.status || '',
+      method: order.method || ''
+    }
+
+    setForm({ pemesan: order.pemesan, items: [item] })
+    setInitialFormSnapshot(cloneForm({ pemesan: order.pemesan, items: [item] }))
+    setEditingOrderIds([order.id])
+    setOrderModalOpen(true)
+    setDetailModalOpen(false)
+  }
+
+  const handleDeleteOrderItem = async (order) => {
+    const result = await Swal.fire({
+      title: `Hapus order produk ${order.produkLabel}?`,
+      text: 'Order ini akan dihapus.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Hapus'
+    })
+
+    if (!result.isConfirmed) return
+
+    setLoading(true)
+    try {
+      const { error } = await supabase.from('orders').delete().eq('id', order.id)
+      if (error) throw error
+      await fetchOrders()
+      Swal.fire('Dihapus!', 'Order berhasil dihapus.', 'success')
+      setDetailModalOpen(false)
+    } catch (error) {
+      console.error('Error deleting order:', error)
+      Swal.fire('Error', 'Gagal menghapus data', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handlePrintStruk = (group) => {
     const now = new Date()
     const dateStr = now.toLocaleDateString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit' })
@@ -954,15 +1036,20 @@ const WeekOffline = () => {
       name: 'Aksi',
       cell: row => (
         <div>
-          {/* <Button size="sm" color="info" className="me-2" onClick={(e) => { e.stopPropagation(); handlePrintStruk(row); }} disabled={loading}>
-            <Printer size={16} />
-          </Button> */}
-          <Button size="sm" color="warning" className='mb-1' onClick={(e) => { e.stopPropagation(); handleEdit(row); }} disabled={loading || isAllWeek}>
-            <Edit size={16} />
-          </Button>
-          <Button size="sm" color="danger" onClick={(e) => { e.stopPropagation(); handleDelete(row); }} disabled={loading}>
-            <Trash2 size={16} />
-          </Button>
+          {hasLargeDetailGroup(row) ? (
+            <Button size="sm" color="info" onClick={(e) => { e.stopPropagation(); handleShowDetails(row); }} disabled={loading}>
+              <Eye size={16}/>
+            </Button>
+          ) : (
+            <>
+              <Button size="sm" color="warning" className='mb-1' onClick={(e) => { e.stopPropagation(); handleEdit(row); }} disabled={loading || isAllWeek}>
+                <Edit size={16} />
+              </Button>
+              <Button size="sm" color="danger" onClick={(e) => { e.stopPropagation(); handleDelete(row); }} disabled={loading}>
+                <Trash2 size={16} />
+              </Button>
+            </>
+          )}
         </div>
       ),
       wrap: true,
@@ -1004,6 +1091,130 @@ const WeekOffline = () => {
     { label: 'QRIS', value: 'qris' },
     { label: 'Cash', value: 'cash' },
     { label: 'Transfer', value: 'transfer' }
+  ]
+
+  const detailFilteredItems = useMemo(() => {
+    if (!detailRow) return []
+    const search = detailSearchText.toLowerCase()
+    return detailRow.items
+      .filter(item => {
+        const concatenated = [
+          detailRow.pemesan,
+          item.produkLabel,
+          item.status,
+          item.method,
+          item.catatan
+        ].join(' ').toLowerCase()
+        const matchSearch = concatenated.includes(search)
+        const matchStatus = detailSelectedStatus ? item.status === detailSelectedStatus.value : true
+        const matchMethod = detailSelectedMethod ? item.method === detailSelectedMethod.value : true
+        return matchSearch && matchStatus && matchMethod
+      })
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+  }, [detailRow, detailSearchText, detailSelectedStatus, detailSelectedMethod])
+
+  const detailColumns = [
+    { name: 'No', selector: (r, i) => i + 1, width: '5%', wrap: true },
+    {
+      name: 'Produk',
+      cell: row => (
+        <div>
+          <div className="fw-semibold">{row.produkLabel}</div>
+          {row.catatan ? <div className="text-muted small">Catatan: {row.catatan}</div> : null}
+        </div>
+      ),
+      wrap: true,
+      width: '25%'
+    },
+    {
+      name: 'Total',
+      selector: row => {
+        const total = Number(row.bayar || Number(row.jumlah || 0) * getAdjustedHJK(row.harga_satuan || row.hargaSatuan || row.data?.hjk || 0))
+        return total > 0 ? `Rp${total.toLocaleString('id-ID', { maximumFractionDigits: 0 })}` : '-'
+      },
+      sortable: true,
+      wrap: true,
+      width: '10%'
+    },
+    {
+      name: 'Status',
+      cell: row => {
+        if (!row.status) return '-'
+        const map = {
+          lunas: { color: 'success', label: 'Lunas' },
+          open_bill: { color: 'danger', label: 'Open Bill' }
+        }
+        const config = map[row.status] || { color: 'secondary', label: row.status }
+        return <Badge color={config.color}>{config.label}</Badge>
+      },
+      wrap: true,
+      width: '8%'
+    },
+    {
+      name: 'Method',
+      cell: row => {
+        if (!row.method) return '-'
+        return <Badge color="primary">{row.method.toUpperCase()}</Badge>
+      },
+      wrap: true,
+      width: '8%'
+    },
+    {
+      name: 'Dibuat',
+      cell: row => (
+        <div>
+          <div>{row.createdByName || '-'}</div>
+          <small className='text-muted d-block' style={{ fontSize: '11px', lineHeight: '1.2' }}>
+            {row.created_at
+              ? formatUtc7(row.created_at)
+              : '-'}
+          </small>
+        </div>
+      ),
+      wrap: true,
+      width: '14%'
+    },
+    {
+      name: 'Terakhir Diubah',
+      cell: row => (
+        <div>
+          <div>{row.lastEditedByName || '-'}</div>
+          <small className='text-muted d-block' style={{ fontSize: '11px', lineHeight: '1.2' }}>
+            {row.updated_at
+              ? formatUtc7(row.updated_at)
+              : '-'}
+          </small>
+        </div>
+      ),
+      wrap: true,
+      width: '14%'
+    },
+    {
+      name: 'Aksi',
+      cell: row => (
+        <div>
+          <Button
+            size="sm"
+            color="warning"
+            className='me-1 mb-1'
+            onClick={() => handleEditOrderItem(row)}
+            disabled={loading || isAllWeek}
+          >
+            <Edit size={16} />
+          </Button>
+          <Button
+            size="sm"
+            color="danger"
+            onClick={() => handleDeleteOrderItem(row)}
+            disabled={loading}
+          >
+            <Trash2 size={16} />
+          </Button>
+        </div>
+      ),
+      wrap: true,
+      width: '10%'
+    }
   ]
 
   const totalProduk = (form.items || []).reduce(
@@ -1638,6 +1849,73 @@ const WeekOffline = () => {
             </Button>
           </ModalFooter>
         </Form>
+      </Modal>
+      <Modal isOpen={detailModalOpen} toggle={() => setDetailModalOpen(false)} size="xl" centered>
+        <ModalHeader toggle={() => setDetailModalOpen(false)}>
+          Detail pesanan {detailRow?.pemesan || 'Tanpa Nama'} ({detailRow?.items.length || 0} item)
+        </ModalHeader>
+        <ModalBody>
+          <Row className="mb-3">
+            <Col xs="12" md="5" className="mb-2 mb-md-0">
+              <Input
+                placeholder="🔍 Cari item..."
+                value={detailSearchText}
+                onChange={e => setDetailSearchText(e.target.value)}
+                disabled={loading}
+              />
+            </Col>
+            <Col xs="12" md="3" className="mb-2 mb-md-0">
+              <Select
+                options={statusOptions}
+                isClearable
+                isSearchable
+                placeholder="Filter status"
+                value={detailSelectedStatus}
+                onChange={setDetailSelectedStatus}
+                isDisabled={loading}
+              />
+            </Col>
+            <Col xs="12" md="3" className="mb-2 mb-md-0">
+              <Select
+                options={methodOptions}
+                isClearable
+                isSearchable
+                placeholder="Filter method"
+                value={detailSelectedMethod}
+                onChange={setDetailSelectedMethod}
+                isDisabled={loading}
+              />
+            </Col>
+            <Col xs="12" md="1" className="d-flex justify-content-end">
+              <Button color="danger" onClick={() => {
+                setDetailSearchText('')
+                setDetailSelectedStatus(null)
+                setDetailSelectedMethod(null)
+              }} disabled={loading}>
+                Reset
+              </Button>
+            </Col>
+          </Row>
+
+          <div className="border overflow-auto" style={{ minHeight: 200 }}>
+            <DataTable
+              columns={detailColumns}
+              data={detailFilteredItems}
+              pagination
+              paginationPerPage={10}
+              paginationRowsPerPageOptions={[10, 25, 50, 100]}
+              noDataComponent="Tidak ada item"
+              highlightOnHover
+              responsive
+              progressPending={loading}
+            />
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button color="secondary" onClick={() => setDetailModalOpen(false)}>
+            Tutup
+          </Button>
+        </ModalFooter>
       </Modal>
       <div className="border overflow-auto" style={{ minHeight: 200 }}>
         <DataTable
