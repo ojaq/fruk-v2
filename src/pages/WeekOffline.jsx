@@ -86,12 +86,11 @@ const WeekOffline = () => {
   )
 
   const currentAnnouncement = useMemo(() => {
-    return (bazaarData.announcements || [])
-      .find(a => a.weekCode === sheetName && a.status === 'active')
+    return (bazaarData.announcements || []).filter(a => a.weekCode === sheetName)
   }, [bazaarData, sheetName])
   const approvedRegs = useMemo(() => {
-    return (bazaarData.registrations || [])
-      .filter(r => r?.announcementId === currentAnnouncement?.id && r?.status === 'approved')
+    const announcementIds = currentAnnouncement.map(a => a.id)
+    return (bazaarData.registrations || []).filter(r => announcementIds.includes(r?.announcementId) && r?.status === 'approved')
   }, [bazaarData, currentAnnouncement])
   const usersById = useMemo(() => {
     const map = new Map()
@@ -260,13 +259,12 @@ const WeekOffline = () => {
   useEffect(() => {
     if (currentAnnouncement) {
       const opts = allowedProducts.map(prod => {
-        const totalStock = prod.offline_stock ?? 0
-        const remaining = totalStock > 0
-          ? getRemainingStockForProduct(prod.registrationProductId, currentGroupQtyByProduct[prod.registrationProductId] || 0)
-          : 0
-        const isDisabled = totalStock > 0 && remaining <= 0
+        const totalStock = prod.offline_stock
+        const remaining = totalStock > 0 ? getRemainingStockForProduct(prod.registrationProductId, currentGroupQtyByProduct[prod.registrationProductId] || 0) : 0
+        const isCancelled = totalStock === 0
+        const isDisabled = isCancelled || (totalStock > 0 && remaining <= 0)
         const baseLabel = `${prod.namaProduk || prod.nama_produk || 'N/A'} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim()
-        const stockText = totalStock > 0 ? `${remaining}/${totalStock} stok tersisa` : 'stok tidak terbatas'
+        const stockText = totalStock === 0 ? 'Produk dibatalkan' : totalStock > 0 ? `${remaining}/${totalStock} stok tersisa` : 'stok tidak terbatas'
 
         return {
           label: baseLabel,
