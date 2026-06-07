@@ -30,7 +30,7 @@ const Week = () => {
   const sheetName = activeWeek ? `W${activeWeek}` : null
 
   const [form, setForm] = useState({
-    pemesan: '', produkLabel: null, catatan: '', jumlah: '', bayar: ''
+    pemesan: '', produkLabel: null, catatan: '', jumlah: '', bayar: '', status: null
   })
   const [data, setData] = useState([])
   const [editingOrderId, setEditingOrderId] = useState(null)
@@ -40,12 +40,18 @@ const Week = () => {
   const [loading, setLoading] = useState(false)
   const [selectedWeek, setSelectedWeek] = useState(null)
   const [orderModalOpen, setOrderModalOpen] = useState(false)
+  const [selectedStatus, setSelectedStatus] = useState(null)
 
   const isAllWeek = !activeWeek
 
   const uniquePemesanThisWeek = !isAllWeek
     ? [...new Set((data || []).map(d => d.pemesan))].sort((a, b) => a.localeCompare(b))
     : []
+
+  const statusOptions = [
+    { label: 'Lunas', value: 'lunas' },
+    { label: 'Open Bill', value: 'open_bill' }
+  ]
 
   const currentAnnouncement = useMemo(() => {
     return (bazaarData.announcements || [])
@@ -199,7 +205,6 @@ const Week = () => {
         return
       }
 
-
       const weekId = weeks.find(w => w.week_code === sheetName)?.id
       if (!weekId) {
         Swal.fire('Error', 'Minggu tidak ditemukan', 'error')
@@ -207,7 +212,6 @@ const Week = () => {
       }
 
       if (editingOrderId) {
-
         const { error } = await supabase
           .from('orders')
           .update({
@@ -215,20 +219,20 @@ const Week = () => {
             jumlah: Number(jumlah),
             harga_satuan: produkLabel.data.hjk,
             catatan: form.catatan || null,
-            bayar: parseFloat(form.bayar) || null
+            bayar: parseFloat(form.bayar) || null,
+            status: form.status || null
           })
           .eq('id', editingOrderId)
         if (error) throw error
-
 
         setData(prev => prev.map(r => r.id === editingOrderId ? {
           ...r,
           pemesan,
           jumlah: Number(jumlah),
           bayar: parseFloat(form.bayar) || null,
-          catatan: form.catatan || ''
+          catatan: form.catatan || '',
+          status: form.status || null
         } : r))
-
         Swal.fire('Berhasil', 'Order berhasil diperbarui', 'success')
       } else {
         await createOrder({
@@ -243,13 +247,13 @@ const Week = () => {
           catatan: form.catatan || null,
           bayar: parseFloat(form.bayar) || null,
           supplierId: produkLabel.supplierId || undefined,
-          status: null,
+          status: 'open_bill',
           method: null
         })
         Swal.fire('Berhasil', 'Order berhasil ditambahkan', 'success')
       }
 
-      setForm({ pemesan: '', produkLabel: null, catatan: '', jumlah: '', bayar: '' })
+      setForm({ pemesan: '', produkLabel: null, catatan: '', jumlah: '', bayar: '', status: null })
       setEditingOrderId(null)
       setOrderModalOpen(false)
     } catch (error) {
@@ -286,6 +290,7 @@ const Week = () => {
       catatan: row.catatan,
       jumlah: row.jumlah,
       bayar: row.bayar,
+      status: row.status || null,
       adjustedHJK: opt ? getAdjustedHJK(opt.data.hjk) : 0
     })
     setEditingOrderId(row.id)
@@ -328,12 +333,26 @@ const Week = () => {
   }
 
   const columns = [
-    { name: 'No', selector: (r, i) => i + 1, width: '60px', wrap: true },
-    ...(isAllWeek ? [{ name: 'Minggu', selector: r => r?.week, wrap: true }] : []),
-    { name: 'Pemesan', selector: r => r?.pemesan, wrap: true },
-    { name: 'Produk', selector: r => r?.produkLabel, wrap: true },
-    { name: 'Catatan', selector: r => r?.catatan || "-", wrap: true },
-    { name: 'Jumlah', selector: r => r?.jumlah, wrap: true, width: "120px", },
+    { name: 'No', selector: (r, i) => i + 1, width: '5%', wrap: true },
+    ...(isAllWeek ? [{ name: 'Minggu', selector: r => r?.week, wrap: true, width: '6%' }] : []),
+    { name: 'Pemesan', selector: r => r?.pemesan, wrap: true, width: isAllWeek ? '18%' : '20%' },
+    { name: 'Produk', selector: r => r?.produkLabel, wrap: true, width: isAllWeek ? '18%' : '20%' },
+    { name: 'Catatan', selector: r => r?.catatan || "-", wrap: true, width: isAllWeek ? '18%' : '20%' },
+    {
+      name: 'Status',
+      cell: row => {
+        if (!row.status) {
+          return '-'
+        }
+        return (
+          <Badge color={row.status === 'lunas' ? 'success' : 'danger'}>
+            {row.status === 'lunas' ? 'Lunas' : 'Open Bill'}
+          </Badge>
+        )
+      },
+      width: '9%'
+    },
+    { name: 'Jumlah', selector: r => r?.jumlah, wrap: true, width: "8%", },
     {
       name: 'Total Bayar',
       selector: r => {
@@ -342,7 +361,7 @@ const Week = () => {
         const adjustedValue = bayar < 1000 ? bayar * 1000 : bayar
         return `Rp${adjustedValue.toLocaleString('id-ID', { maximumFractionDigits: 0 })}`
       },
-      width: "140px",
+      width: "9%",
       wrap: true
     },
     {
@@ -356,7 +375,7 @@ const Week = () => {
         )
         return (
           <>
-            <Button size="sm" color="warning" className="me-2" onClick={() => handleEdit(row)} disabled={loading || isAllWeek}>
+            <Button size="sm" color="warning" className="me-1" onClick={() => handleEdit(row)} disabled={loading || isAllWeek}>
               <Edit size={16} />
             </Button>
             <Button size="sm" color="danger" onClick={() => handleDelete(filteredIndex)} disabled={loading}>
@@ -365,18 +384,17 @@ const Week = () => {
           </>
         )
       },
-      width: "140px",
+      width: "9%",
       wrap: true
     }
   ]
 
   const filtered = data.filter(row => {
-    const matchSearch = Object.values(row).some(val =>
-      String(val).toLowerCase().includes(searchText.toLowerCase())
-    )
+    const matchSearch = Object.values(row).some(val => String(val).toLowerCase().includes(searchText.toLowerCase()))
     const matchPemesan = selectedPemesan ? row.pemesan === selectedPemesan.value : true
     const matchWeek = selectedWeek ? row.week === selectedWeek.value : true
-    return matchSearch && matchPemesan && matchWeek
+    const matchStatus = selectedStatus ? row.status === selectedStatus.value : true
+    return matchSearch && matchPemesan && matchWeek && matchStatus
   })
 
   const uniquePemesanOptions = [...new Set(data.map(d => d.pemesan))].map(p => ({
@@ -412,6 +430,7 @@ const Week = () => {
             setSearchText('')
             setSelectedPemesan(null)
             setSelectedWeek(null)
+            setSelectedStatus(null)
           }} disabled={loading}>
             Reset Filter
           </Button>
@@ -419,7 +438,7 @@ const Week = () => {
       </Row>
       <div className="mb-2">
         <Row className="mb-3">
-          <Col xs="12" md="4" className="mb-2 mb-md-0">
+          <Col xs="12" md="3" className="mb-2">
             <Input
               placeholder="🔍 Cari apa aja..."
               value={searchText}
@@ -427,7 +446,7 @@ const Week = () => {
               disabled={loading}
             />
           </Col>
-          <Col xs="12" md="4" className="mb-2 mb-md-0">
+          <Col xs="12" md="3" className="mb-2">
             <Select
               options={uniquePemesanOptions}
               isClearable
@@ -438,8 +457,18 @@ const Week = () => {
               isDisabled={loading}
             />
           </Col>
+          <Col xs="12" md="3" className="mb-2">
+            <Select
+              options={statusOptions}
+              isClearable
+              placeholder="🔽 Filter status"
+              value={selectedStatus}
+              onChange={setSelectedStatus}
+              isDisabled={loading}
+            />
+          </Col>
           {isAllWeek && (
-            <Col xs="12" md="4" className="mb-2 mb-md-0">
+            <Col xs="12" md="3" className="mb-2">
               <Select
                 options={uniqueWeekOptions}
                 isClearable
@@ -504,6 +533,24 @@ const Week = () => {
                   type="textarea"
                 />
               </Col>
+              {editingOrderId && (
+                <Col xs="12" className="mb-3">
+                  <Label>Status</Label>
+                  <Select
+                    options={statusOptions}
+                    isClearable
+                    placeholder="Pilih status"
+                    value={statusOptions.find(s => s.value === form.status) || null}
+                    onChange={option =>
+                      setForm(f => ({
+                        ...f,
+                        status: option?.value || null
+                      }))
+                    }
+                    isDisabled={loading || isAllWeek}
+                  />
+                </Col>
+              )}
               <Col xs="6" md="4" className="mb-3">
                 <Label>Jumlah *</Label>
                 <Input

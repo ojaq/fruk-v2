@@ -876,8 +876,8 @@ const WeekOffline = () => {
 
   const columns = [
     { name: 'No', selector: (r, i) => i + 1, width: '5%', wrap: true },
-    ...(isAllWeek ? [{ name: 'Minggu', selector: r => r.week, wrap: true }] : []),
-    { name: 'Pemesan', selector: r => r.pemesan, wrap: true, width: '17%' },
+    ...(isAllWeek ? [{ name: 'Minggu', selector: r => r.week, wrap: true, width: '6%' }] : []),
+    { name: 'Pemesan', selector: r => r.pemesan, wrap: true, width: isAllWeek ? '14%' : '17%' },
     {
       name: 'Produk',
       cell: row => {
@@ -914,7 +914,7 @@ const WeekOffline = () => {
         )
       },
       wrap: true,
-      width: '23%'
+      width: isAllWeek ? '20%' : '23%'
     },
     {
       name: 'Total',

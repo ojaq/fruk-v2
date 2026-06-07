@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useAppUi } from '../context/AppUiContext'
 import DataTable from 'react-data-table-component'
-import { Button, Row, Col, Card, CardHeader, CardBody, Input, Modal, ModalBody, ModalFooter, ModalHeader, Label, FormGroup, CardFooter } from 'reactstrap'
+import { Button, Row, Col, Card, CardHeader, CardBody, Input, Modal, ModalBody, ModalFooter, ModalHeader, Label, FormGroup, CardFooter, Badge } from 'reactstrap'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import Select from 'react-select'
@@ -18,6 +18,8 @@ const CustomerInvoice = () => {
   const [grouped, setGrouped] = useState([])
   const [searchText, setSearchText] = useState('')
   const [selectedPemesan, setSelectedPemesan] = useState(null)
+  const [selectedStatus, setSelectedStatus] = useState(null)
+  const [selectedChannel, setSelectedChannel] = useState(null)
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
   const [selectedInvoiceRow, setSelectedInvoiceRow] = useState(null)
   const [invoiceMethod, setInvoiceMethod] = useState('transfer')
@@ -30,20 +32,24 @@ const CustomerInvoice = () => {
   }
 
   useEffect(() => {
-    const relevant = (orders || []).filter(o => o.channel === 'online' || (o.channel === 'offline' && o.status === 'open_bill'))
-      .filter(o => {
-        if (!activeWeek) return true
-        const weekCode = weeks.find(w => w.id === o.week_id)?.week_code
-        return weekCode === `W${activeWeek}`
-      })
+    const relevant = (orders || []).filter(o => {
+      const isOpenBill = !o.status || o.status === 'open_bill'
+      return (
+        o.channel === 'online' ||
+        (o.channel === 'offline' && isOpenBill)
+      )
+    }).filter(o => {
+      if (!activeWeek) return true
+      const weekCode = weeks.find(w => w.id === o.week_id)?.week_code
+      return weekCode === `W${activeWeek}`
+    })
 
     const map = {}
     relevant.forEach(o => {
       const prod = o.registration_products || {}
       const label = `${prod.nama_produk || ''} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim()
-      const sourceLabel = o.channel === 'offline'
-        ? (o.status === 'open_bill' ? 'Offline Open Bill' : 'Offline')
-        : 'Online'
+      const isOpenBill = !o.status || o.status === 'open_bill'
+      const sourceLabel = o.channel === 'offline' ? 'Offline Open Bill' : isOpenBill ? 'Online Open Bill' : 'Online Lunas'
       const key = `${o.pemesan}|${sourceLabel}|${label}|${o.catatan || ''}`
       const qty = Number(o.jumlah)
       const bayarRaw = Number(o.bayar)
@@ -58,7 +64,7 @@ const CustomerInvoice = () => {
         bayar,
         week: weeks.find(w => w.id === o.week_id)?.week_code || '',
         orderIds: [o.id],
-        rawStatus: o.status,
+        rawStatus: isOpenBill ? 'open_bill' : 'lunas',
         rawChannel: o.channel
       }
 
@@ -72,26 +78,37 @@ const CustomerInvoice = () => {
     })
 
     const arr = Object.values(map)
-    const byPemesan = {}
-    arr.forEach(r => {
-      if (!byPemesan[r.pemesan]) byPemesan[r.pemesan] = []
-      byPemesan[r.pemesan].push(r)
+    const groupedMap = {}
+
+    arr.forEach(item => {
+      const key = `${item.pemesan}|${item.rawChannel}|${item.rawStatus}`
+      if (!groupedMap[key]) {
+        groupedMap[key] = []
+      }
+      groupedMap[key].push(item)
     })
 
-    setGrouped(Object.entries(byPemesan).map(([pemesan, list], i) => {
-      const totalQty = list.reduce((a, b) => a + b.jumlah, 0)
-      const totalHarga = list.reduce((a, b) => a + b.bayar, 0)
-      const sourceSet = [...new Set(list.map(item => item.sourceLabel))].filter(Boolean)
-      const sourceLabel = sourceSet.length === 1 ? sourceSet[0] : sourceSet.join(', ')
-      return { id: i + 1, pemesan, sourceLabel, items: list, totalQty, totalHarga }
-    }).sort((a, b) => a.pemesan.toLowerCase().localeCompare(b.pemesan.toLowerCase())))
+    setGrouped(
+      Object.entries(groupedMap).map(([key, list], i) => {
+        const first = list[0]
+        return {
+          id: i + 1,
+          pemesan: first.pemesan,
+          sourceLabel: first.sourceLabel,
+          rawChannel: first.rawChannel,
+          rawStatus: first.rawStatus,
+          items: list,
+          totalQty: list.reduce((a, b) => a + b.jumlah, 0),
+          totalHarga: list.reduce((a, b) => a + b.bayar, 0)
+        }
+      }).sort((a, b) => a.pemesan.toLowerCase().localeCompare(b.pemesan.toLowerCase())))
   }, [orders, weeks, activeWeek])
 
   const handleInvoiceMarkLunas = async () => {
     if (!selectedInvoiceRow || !selectedInvoiceRow.items?.length) return
 
     const openBillOrderIds = selectedInvoiceRow.items
-      .filter(item => item.rawStatus === 'open_bill')
+      .filter(item => !item.rawStatus || item.rawStatus === 'open_bill')
       .flatMap(item => item.orderIds)
 
     if (!openBillOrderIds.length) return
@@ -322,15 +339,15 @@ const CustomerInvoice = () => {
 
   const filteredGrouped = grouped.filter(group => {
     const matchPemesan = selectedPemesan ? group.pemesan === selectedPemesan.value : true
-    const matchSearch = searchText
-      ? group.items.some(item =>
-        Object.values(item).some(val =>
-          String(val).toLowerCase().includes(searchText.toLowerCase())
-        )
-      )
-      : true
-
-    return matchPemesan && matchSearch
+    const matchSearch = searchText ? group.items.some(item => Object.values(item).some(val => String(val).toLowerCase().includes(searchText.toLowerCase()))) : true
+    const matchStatus = selectedStatus ? group.items.some(item => item.rawStatus === selectedStatus.value) : true
+    const matchChannel = selectedChannel ? group.items.some(item => item.rawChannel === selectedChannel.value) : true
+    return (
+      matchPemesan &&
+      matchSearch &&
+      matchStatus &&
+      matchChannel
+    )
   })
 
   return (
@@ -343,27 +360,53 @@ const CustomerInvoice = () => {
         </Col>
       </Row>
       <Row className="mb-3">
-        <Col xs="12" md="4" className="mb-2 mb-md-0">
+        <Col xs="12" md="2" className="mb-2 mb-md-0">
           <Input
             placeholder="🔍 Cari..."
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
           />
         </Col>
-        <Col xs="12" md="4" className="mb-2 mb-md-0">
+        <Col xs="12" md="2" className="mb-2 mb-md-0">
           <Select
             options={grouped.map(g => ({ label: g.pemesan, value: g.pemesan }))}
-            placeholder="🔽 Filter Pemesan"
+            placeholder="🔽 Filter pemesan"
             isClearable
             isSearchable
             value={selectedPemesan}
             onChange={setSelectedPemesan}
           />
         </Col>
+        <Col xs="12" md="2" className="mb-2 mb-md-0">
+          <Select
+            options={[
+              { label: 'Open Bill', value: 'open_bill' },
+              { label: 'Lunas', value: 'lunas' }
+            ]}
+            placeholder="🔽 Filter status"
+            isClearable
+            value={selectedStatus}
+            onChange={setSelectedStatus}
+          />
+        </Col>
+        <Col xs="12" md="2" className="mb-2 mb-md-0">
+          <Select
+            options={[
+              { label: 'Online', value: 'online' },
+              { label: 'Offline', value: 'offline' }
+            ]}
+            placeholder="🔽 Filter bazaar"
+            isClearable
+            value={selectedChannel}
+            onChange={setSelectedChannel}
+          />
+        </Col>
         <Col xs="6" md="2" className="mb-2 mb-md-0">
-          <Button color="danger" onClick={() => {
+          <Button color="danger" className='w-100' onClick={() => {
             setSearchText('')
             setSelectedPemesan(null)
+            setSelectedStatus(null)
+            setSelectedChannel(null)
           }}>
             Reset Filter
           </Button>
@@ -373,6 +416,7 @@ const CustomerInvoice = () => {
             <Button
               color="success"
               onClick={() => generateInvoiceSheet()}
+              className='w-100'
             >
               Generate All Invoice
             </Button>
@@ -384,9 +428,31 @@ const CustomerInvoice = () => {
           <CardHeader>
             <Row className="align-items-center">
               <Col>
-                <h5>{group.pemesan}{group.sourceLabel ? ` (${group.sourceLabel})` : ''}</h5>
+                <h5 className="mb-0">
+                  {group.pemesan} - 
+                  <>
+                    {[...new Set(group.items.map(i => i.rawChannel))].map(channel => (
+                      <Badge
+                        key={channel}
+                        color={channel === 'online' ? 'primary' : 'secondary'}
+                        className="ms-2"
+                      >
+                        {channel.toUpperCase()}
+                      </Badge>
+                    ))}
+                    {[...new Set(group.items.map(i => i.rawStatus || 'open_bill'))].map(status => (
+                      <Badge
+                        key={status}
+                        color={status === 'lunas' ? 'success' : 'danger'}
+                        className="ms-2"
+                      >
+                        {status === 'lunas' ? 'LUNAS' : 'OPEN BILL'}
+                      </Badge>
+                    ))}
+                  </>
+                </h5>
               </Col>
-              {group.items.some(item => item.rawStatus === 'open_bill') && (
+              {group.items.some(item => !item.rawStatus || item.rawStatus === 'open_bill') && (
                 <Col xs="auto">
                   <Button
                     color="warning"
@@ -463,12 +529,6 @@ const CustomerInvoice = () => {
                       )
                     },
                     wrap: true
-                  },
-                  {
-                    name: 'Aksi',
-                    cell: row => '-',
-                    width: '140px',
-                    wrap: true
                   }
                 ]}
                 data={group.items}
@@ -495,7 +555,7 @@ const CustomerInvoice = () => {
       <Modal isOpen={invoiceModalOpen} toggle={() => setInvoiceModalOpen(false)} centered>
         <ModalHeader toggle={() => setInvoiceModalOpen(false)}>Ubah Open Bill menjadi Lunas</ModalHeader>
         <ModalBody>
-          <p>Ubah semua open bill offline menjadi lunas untuk <strong>{selectedInvoiceRow?.pemesan}</strong>.</p>
+          <p>Ubah semua open bill menjadi lunas untuk<strong> {selectedInvoiceRow?.pemesan}</strong>.</p>
           <FormGroup>
             <Label>Method pembayaran</Label>
             <Select
