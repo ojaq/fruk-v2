@@ -11,7 +11,7 @@ import { supabase } from '../supabaseClient'
 import ExcelJS from 'exceljs'
 
 const WeekOffline = () => {
-  const { user, users, productData, registeredUsers, bazaarData, createOrder, fetchOrders, weeks, orders } = useAuth()
+  const { user, users, productData, registeredUsers, bazaarData, createOrder, fetchOrdersForWeek, weeks, orders } = useAuth()
   const { currentWeek } = useAppUi()
   const { num } = useParams()
   const activeWeek = num ? Number(num) : currentWeek
@@ -528,14 +528,14 @@ const WeekOffline = () => {
         const failedUpdate = updateResults.find(r => r?.error)
         if (failedUpdate) throw failedUpdate.error
 
-        await fetchOrders()
+        await fetchOrdersForWeek(weekId)
         Swal.fire('Berhasil', 'Order berhasil diperbarui', 'success')
       } else {
         const inserts = validItems.map(item => payloadForItem(item, false))
         const { error } = await supabase.from('orders').insert(inserts)
         if (error) throw error
 
-        await fetchOrders()
+        await fetchOrdersForWeek(weekId)
         Swal.fire('Berhasil', 'Order berhasil ditambahkan', 'success')
       }
 
@@ -606,9 +606,14 @@ const WeekOffline = () => {
 
     setLoading(true)
     try {
+      const weekId = weeks.find(w => w.week_code === sheetName)?.id
       const { error } = await supabase.from('orders').delete().in('id', group.orderIds)
       if (error) throw error
-      await fetchOrders()
+      if (weekId) {
+        await fetchOrdersForWeek(weekId)
+      } else {
+        setData(prev => prev.filter(row => row.pemesan !== group.pemesan))
+      }
       Swal.fire('Dihapus!', 'Order berhasil dihapus.', 'success')
     } catch (error) {
       console.error('Error deleting order:', error)
@@ -681,9 +686,12 @@ const WeekOffline = () => {
 
     setLoading(true)
     try {
+      const weekId = order.week_id || weeks.find(w => w.week_code === sheetName)?.id
       const { error } = await supabase.from('orders').delete().eq('id', order.id)
       if (error) throw error
-      await fetchOrders()
+      if (weekId) {
+        await fetchOrdersForWeek(weekId)
+      }
       Swal.fire('Dihapus!', 'Order berhasil dihapus.', 'success')
       setDetailModalOpen(false)
     } catch (error) {

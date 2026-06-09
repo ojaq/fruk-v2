@@ -11,7 +11,8 @@ import FilePondPluginImageExifOrientation from 'filepond-plugin-image-exif-orien
 import FilePondPluginImagePreview from 'filepond-plugin-image-preview'
 import FilePondPluginFileValidateType from 'filepond-plugin-file-validate-type'
 import 'filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.css'
-import { supabase } from '../supabaseClient'
+import ProductImage from '../components/ProductImage'
+import { uploadProductImage } from '../utils/imageUtils'
 
 registerPlugin(
   FilePondPluginImagePreview,
@@ -130,26 +131,15 @@ const MasterSupplier = () => {
       let imageUrl = editForm.imageUrl
       if (file.length > 0 && file[0].file) {
         try {
-          const ext = file[0].file.name.split('.').pop()
-          const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 8)}.${ext}`
-          const { data: uploadData, error: uploadError } = await supabase.storage
-            .from('product-images')
-            .upload(fileName, file[0].file, { upsert: true })
-          if (uploadError) {
-            console.error('Upload error:', uploadError)
-            if (uploadError.message?.includes('row-level security') || uploadError.statusCode === '403') {
-              Swal.fire('Error', 'Storage tidak dikonfigurasi dengan benar. Silakan hubungi admin untuk mengatur bucket storage.', 'error')
-            } else {
-              Swal.fire('Error', `Gagal upload gambar: ${uploadError.message}`, 'error')
-            }
-            setLoading(false)
-            return
-          }
-          const { data: urlData } = supabase.storage.from('product-images').getPublicUrl(fileName)
-          imageUrl = urlData.publicUrl
+          imageUrl = await uploadProductImage(file[0].file)
         } catch (uploadErr) {
           console.error('Upload exception:', uploadErr)
-          Swal.fire('Error', 'Gagal upload gambar. Silakan coba lagi.', 'error')
+          const message = uploadErr?.message || ''
+          if (message.includes('row-level security') || uploadErr?.statusCode === '403') {
+            Swal.fire('Error', 'Storage tidak dikonfigurasi dengan benar. Silakan hubungi admin untuk mengatur bucket storage.', 'error')
+          } else {
+            Swal.fire('Error', message ? `Gagal upload gambar: ${message}` : 'Gagal upload gambar. Silakan coba lagi.', 'error')
+          }
           setLoading(false)
           return
         }
@@ -221,11 +211,12 @@ const MasterSupplier = () => {
     {
       name: 'Gambar',
       cell: row => row.imageUrl ? (
-        <img
+        <ProductImage
           src={row.imageUrl}
           alt={row.namaProduk}
+          size="thumb"
           style={{ width: 60, height: 60, objectFit: 'cover', cursor: 'pointer', borderRadius: 6, border: '1px solid #eee' }}
-          onClick={() => setImagePreview({ open: true, url: row.imageUrl })}
+          onClick={(url) => setImagePreview({ open: true, url })}
         />
       ) : <span className="text-muted">-</span>,
       width: '100px',
@@ -466,7 +457,7 @@ const MasterSupplier = () => {
                   allowMultiple={false}
                   maxFiles={1}
                   name="image"
-                  maxFileSize="25MB"
+                  maxFileSize="5MB"
                   acceptedFileTypes={['image/jpeg', 'image/png', 'image/svg+xml']}
                   labelIdle={`<span class="text-center" style="cursor: pointer;">
                   Drag & Drop your files or <span class='filepond--label-action'>Browse</span>
@@ -479,7 +470,13 @@ const MasterSupplier = () => {
                 />
                 {editForm.imageUrl && file.length === 0 && (
                   <div className="text-center mt-2">
-                    <img src={editForm.imageUrl} alt="Preview" style={{ maxWidth: 180, maxHeight: 180, borderRadius: 8, border: '1px solid #eee' }} />
+                    <ProductImage
+                      src={editForm.imageUrl}
+                      alt="Preview"
+                      size="preview"
+                      style={{ maxWidth: 180, maxHeight: 180, borderRadius: 8, border: '1px solid #eee' }}
+                      lazy={false}
+                    />
                     <div className="text-muted small mt-1">Gambar saat ini</div>
                   </div>
                 )}
@@ -499,7 +496,15 @@ const MasterSupplier = () => {
 
       <Modal isOpen={imagePreview.open} toggle={() => setImagePreview({ open: false, url: '' })} centered size="xl">
         <ModalBody className="text-center p-0 bg-dark">
-          <img src={imagePreview.url} alt="Preview" style={{ maxWidth: '100%', maxHeight: '80vh', margin: 'auto', display: 'block' }} />
+          {imagePreview.url && (
+            <ProductImage
+              src={imagePreview.url}
+              alt="Preview"
+              size="full"
+              style={{ maxWidth: '100%', maxHeight: '80vh', margin: 'auto', display: 'block' }}
+              lazy={false}
+            />
+          )}
         </ModalBody>
       </Modal>
     </div>

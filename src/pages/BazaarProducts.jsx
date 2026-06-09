@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { Button, Col, Input, Label, Row, Modal, ModalBody, FormGroup, Badge } from 'reactstrap'
 import DataTable from 'react-data-table-component'
 import Select from 'react-select'
+import ProductImage from '../components/ProductImage'
 import { useAuth } from '../context/AuthContext'
 import { useAppUi } from '../context/AppUiContext'
 
@@ -262,11 +263,12 @@ const BazaarProducts = () => {
     {
       name: 'Gambar',
       cell: row => row.imageUrl ? (
-        <img
+        <ProductImage
           src={row.imageUrl}
           alt={row.label || row.namaProduk}
+          size="thumb"
           style={{ width: 60, height: 60, objectFit: 'cover', cursor: 'pointer', borderRadius: 6, border: '1px solid #eee' }}
-          onClick={() => setImagePreview({ open: true, url: row.imageUrl })}
+          onClick={(url) => setImagePreview({ open: true, url })}
         />
       ) : <span className="text-muted">-</span>,
       wrap: true
@@ -368,7 +370,15 @@ const BazaarProducts = () => {
       </div>
       <Modal isOpen={imagePreview.open} toggle={() => setImagePreview({ open: false, url: '' })} centered size="xl">
         <ModalBody className="text-center p-0 bg-dark">
-          <img src={imagePreview.url} alt="Preview" style={{ maxWidth: '100%', maxHeight: '80vh', margin: 'auto', display: 'block' }} />
+          {imagePreview.url && (
+            <ProductImage
+              src={imagePreview.url}
+              alt="Preview"
+              size="full"
+              style={{ maxWidth: '100%', maxHeight: '80vh', margin: 'auto', display: 'block' }}
+              lazy={false}
+            />
+          )}
         </ModalBody>
       </Modal>
     </div>

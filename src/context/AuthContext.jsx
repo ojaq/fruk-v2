@@ -5,6 +5,27 @@ import Swal from 'sweetalert2'
 const AuthContext = createContext()
 export const useAuth = () => useContext(AuthContext)
 
+const USER_COLUMNS = 'id, name, role, nama_supplier, nama_bank, no_rekening, phone_number, nama_penerima, is_deleted'
+const PRODUCT_COLUMNS = 'id, owner_id, nama_produk, jenis_produk, keterangan, satuan, ukuran, hjk, hpp, image_url, aktif, is_deleted, created_at, updated_at'
+const REGISTRATION_COLUMNS = `
+  id, announcement_id, supplier_id, status, notes, adminNotes,
+  participate_online, participate_offline, use_same_products, offline_stock,
+  reviewed_by, created_at, updated_at, is_deleted,
+  registration_products (
+    id, registration_id, channel, nama_produk, jenis_produk, keterangan,
+    satuan, ukuran, hjk, hpp, image_url, offline_stock, product_id,
+    is_active, is_deleted, created_at
+  )
+`
+const ORDER_COLUMNS = `
+  id, week_id, announcement_id, registration_id, registration_product_id,
+  supplier_id, channel, pemesan, jumlah, harga_satuan, catatan, bayar,
+  status, method, created_by, last_edited_by, created_at, updated_at, is_deleted,
+  registration_products (
+    id, nama_produk, ukuran, satuan, hjk, hpp
+  )
+`
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -25,7 +46,7 @@ export const AuthProvider = ({ children }) => {
   const fetchUsers = async () => {
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select(USER_COLUMNS)
       .eq('is_deleted', false)
       .order('name')
 
@@ -39,7 +60,7 @@ export const AuthProvider = ({ children }) => {
   const fetchProducts = async () => {
     const { data, error } = await supabase
       .from('products')
-      .select('*')
+      .select(PRODUCT_COLUMNS)
       .eq('is_deleted', false)
 
     if (error) {
@@ -723,10 +744,7 @@ export const AuthProvider = ({ children }) => {
   const fetchRegistrations = async () => {
     const { data, error } = await supabase
       .from('registrations')
-      .select(`
-        *,
-        registration_products (*)
-      `)
+      .select(REGISTRATION_COLUMNS)
       .eq('is_deleted', false)
 
     if (error) {
@@ -739,16 +757,7 @@ export const AuthProvider = ({ children }) => {
   const fetchOrders = async () => {
     const { data, error } = await supabase
       .from('orders')
-      .select(`
-        *,
-        registration_products (
-          nama_produk,
-          ukuran,
-          satuan,
-          hjk,
-          hpp
-        )
-      `)
+      .select(ORDER_COLUMNS)
       .eq('is_deleted', false)
       .order('created_at', { ascending: false })
     if (error) {
@@ -756,6 +765,32 @@ export const AuthProvider = ({ children }) => {
       return
     }
     setOrders(data)
+  }
+
+  const fetchOrdersForWeek = async (weekId) => {
+    if (!weekId) {
+      await fetchOrders()
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('orders')
+      .select(ORDER_COLUMNS)
+      .eq('week_id', weekId)
+      .eq('is_deleted', false)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      Swal.fire('Error', 'Gagal mengambil order', 'error')
+      return
+    }
+
+    setOrders(prev => {
+      const otherWeekOrders = (prev || []).filter(order => order.week_id !== weekId)
+      return [...(data || []), ...otherWeekOrders].sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at)
+      )
+    })
   }
 
   const login = (name) => {
@@ -869,7 +904,7 @@ export const AuthProvider = ({ children }) => {
   }) => {
 
     const supId = supplierId || user?.id
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('orders')
       .insert([{
         week_id: weekId,
@@ -888,13 +923,15 @@ export const AuthProvider = ({ children }) => {
         created_by: user?.id || null,
         last_edited_by: user?.id || null
       }])
+      .select(ORDER_COLUMNS)
+      .single()
 
     if (error) {
       Swal.fire('Error', 'Gagal menambah order', 'error')
       return
     }
 
-    await fetchOrders()
+    setOrders(prev => [data, ...(prev || [])])
   }
 
   useEffect(() => {
@@ -937,6 +974,7 @@ export const AuthProvider = ({ children }) => {
       createRegistration,
       createOrder,
       fetchOrders,
+      fetchOrdersForWeek,
       saveBazaarData,
       logBazaarAction,
       saveProductData,
