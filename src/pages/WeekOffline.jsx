@@ -86,11 +86,10 @@ const WeekOffline = () => {
   )
 
   const currentAnnouncement = useMemo(() => {
-    return (bazaarData.announcements || []).filter(a => a.weekCode === sheetName)
+    return (bazaarData.announcements || []).find(a => a.weekCode === sheetName)
   }, [bazaarData, sheetName])
   const approvedRegs = useMemo(() => {
-    const announcementIds = currentAnnouncement.map(a => a.id)
-    return (bazaarData.registrations || []).filter(r => announcementIds.includes(r?.announcementId) && r?.status === 'approved')
+    return (bazaarData.registrations || []).filter(r => r?.announcementId === currentAnnouncement?.id && r?.status === 'approved')
   }, [bazaarData, currentAnnouncement])
   const usersById = useMemo(() => {
     const map = new Map()
