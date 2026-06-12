@@ -239,7 +239,7 @@ const CustomerInvoice = () => {
       doc.setFont('helvetica', 'normal')
       doc.text('Catatan:', 15, finalY + 10)
       doc.text(`Invoice untuk ${weekNum ? `minggu ke-${weekNum}` : 'semua minggu'}`, 15, finalY + 15)
-      doc.text('Pembayaran dapat dilakukan melalui :\nBank Jago Syariah - 503236704721\nDini Widianti', 15, finalY + 25)
+      doc.text('Pembayaran dapat dilakukan melalui :\nBank Jago Syariah - 508807133869\A.n Suulfa Nida Kofiya', 15, finalY + 25)
 
       doc.save(`Customer Invoice - ${pemesan} ${weekNum ? `Minggu ke-${weekNum}` : 'Semua Minggu'}.pdf`)
     }
