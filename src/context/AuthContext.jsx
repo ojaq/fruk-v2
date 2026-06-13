@@ -979,7 +979,9 @@ export const AuthProvider = ({ children }) => {
       logBazaarAction,
       saveProductData,
       profileModalOpen,
-      toggleProfileModal
+      toggleProfileModal,
+      fetchWeeks,
+      fetchAnnouncements
     }}>
       {children}
     </AuthContext.Provider>

@@ -188,14 +188,29 @@ const BazaarAnnouncement = () => {
           .from('weeks')
           .select('id')
           .eq('week_code', weekCode)
-          .single()
+          .maybeSingle()
 
       if (weekLookupError) {
-        throw new Error(`Week ${weekCode} tidak ditemukan`)
+        throw weekLookupError
       }
 
-      weekId = existingWeek.id
-
+      if (existingWeek) {
+        weekId = existingWeek.id
+      } else {
+        const { data: newWeek, error: createWeekError } =
+          await supabase
+            .from('weeks')
+            .insert({
+              week_code: weekCode,
+              is_active: true
+            })
+            .select('id')
+            .single()
+        if (createWeekError) {
+          throw createWeekError
+        }
+        weekId = newWeek.id
+      }
       const payload = {
         title,
         greeting,
@@ -263,7 +278,8 @@ const BazaarAnnouncement = () => {
       setEditingAnnouncement(null)
       setModalOpen(false)
 
-      window.location.reload()
+      fetchWeeks()
+      fetchAnnouncements()
     } catch (error) {
       console.error('Error saving announcement:', error)
       Swal.fire('Error', 'Gagal menyimpan pengumuman', 'error')
