@@ -904,7 +904,7 @@ const BazaarRegistration = () => {
   const uniqueBaseProducts = Array.from(new Set(baseProducts))
   const isAtMaxProducts = uniqueBaseProducts.length >= maxProductsOffline
 
-  const activeRegs = registrations.filter(r => r?.announcementId === currentAnnouncement?.id && ['pending', 'approved'].includes(r?.status))
+  const activeRegs = registrations.filter(r => r?.announcementId === currentAnnouncement?.id && ['pending', 'approved'].includes(r?.status) && r?.id !== editId)
 
   const onlineSuppliers = new Set(activeRegs.filter(r => r?.participateOnline).map(r => r?.supplierName))
   const offlineSuppliers = new Set(activeRegs.filter(r => r?.participateOffline).map(r => r?.supplierName))
@@ -1063,8 +1063,8 @@ const BazaarRegistration = () => {
                     disabled={
                       loading ||
                       !form.announcementId ||
-                      onlineFull ||
-                      offlineFull
+                      (!form.participateOnline && onlineFull) ||
+                      (!form.participateOffline && offlineFull)
                     }
                   />
                   <Label check>
