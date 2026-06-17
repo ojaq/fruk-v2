@@ -318,23 +318,23 @@ const Week = () => {
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } }
           }
 
-            if ([4, 5, 6].includes(colNumber)) {
-              cell.numFmt = '#,##0'
-            }
-          })
+          if ([4, 5, 6].includes(colNumber)) {
+            cell.numFmt = '#,##0'
+          }
         })
+      })
 
-        worksheet.columns = [
-          { width: 20 },
-          { width: 35 },
-          { width: 18 },
-          { width: 18 },
-          { width: 18 },
-          { width: 12 },
-          { width: 15 },
-          { width: 18 },
-          { width: 18 }
-        ]
+      worksheet.columns = [
+        { width: 20 },
+        { width: 35 },
+        { width: 18 },
+        { width: 18 },
+        { width: 18 },
+        { width: 12 },
+        { width: 15 },
+        { width: 18 },
+        { width: 18 }
+      ]
 
       worksheet.getRow(1).height = 25
 
