@@ -1403,7 +1403,7 @@ const WeekOffline = () => {
       const announcementName = currentAnnouncement?.title || currentAnnouncement?.name || 'Announcement'
       const filename = isAllWeek
         ? `offline-orders-all-weeks-${new Date().toISOString().slice(0, 10)}.xlsx`
-        : `W${activeWeek} - ${announcementName} - ${new Date().toISOString().slice(0, 10)}.xlsx`
+        : `Offline W${activeWeek} - ${announcementName} - ${new Date().toISOString().slice(0, 10)}.xlsx`
 
       link.setAttribute('download', filename)
       document.body.appendChild(link)

@@ -17,6 +17,7 @@ import DataTable from 'react-data-table-component'
 import { Edit, Trash2 } from 'react-feather'
 import Select from 'react-select'
 import Swal from 'sweetalert2'
+import ExcelJS from 'exceljs'
 import { useAuth } from '../context/AuthContext'
 import { useAppUi } from '../context/AppUiContext'
 import { useParams } from 'react-router-dom'
@@ -166,6 +167,197 @@ const Week = () => {
     const num = parseFloat(val)
     if (!num || num <= 0) return 0
     return num < 1000 ? num * 1000 : num
+  }
+
+  const formatUtc7 = (timestamp) => {
+    if (!timestamp) return ''
+    const date = new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return ''
+    return date.toLocaleString('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    })
+  }
+
+  const getExportData = () => {
+    const data = []
+    let grandTotal = 0
+    let grandTotalQty = 0
+
+    const grouped = []
+    const groupMap = new Map()
+
+    filtered.forEach(order => {
+      const pemesan = order.pemesan || 'Tanpa Nama'
+      if (!groupMap.has(pemesan)) {
+        groupMap.set(pemesan, { pemesan, items: [] })
+      }
+      groupMap.get(pemesan).items.push(order)
+    })
+
+    groupMap.forEach(group => grouped.push(group))
+
+    grouped.forEach(group => {
+      const groupTotalQty = group.items.reduce((sum, item) => sum + Number(item.jumlah || 0), 0)
+      const groupTotalPrice = group.items.reduce((sum, item) => {
+        const jumlahProduk = Number(item.jumlah || 0)
+        const hargaSatuanRaw = Number(item.harga_satuan || item.hargaSatuan || item.produkLabel?.data?.hjk || 0)
+        const hargaSatuan = getAdjustedHJK(hargaSatuanRaw)
+        const totalHarga = Number(item.bayar || item.total_harga || jumlahProduk * hargaSatuan)
+        return sum + totalHarga
+      }, 0)
+
+      group.items.forEach((item, index) => {
+        const jumlahProduk = Number(item.jumlah || 0)
+        const hargaSatuanRaw = Number(item.harga_satuan || item.hargaSatuan || item.produkLabel?.data?.hjk || 0)
+        const hargaSatuan = getAdjustedHJK(hargaSatuanRaw)
+        const totalHarga = Number(item.bayar || item.total_harga || jumlahProduk * hargaSatuan)
+
+        data.push({
+          type: 'item',
+          pemesan: index === 0 ? group.pemesan : '',
+          produk: item.produkLabel || '',
+          catatan: item.catatan || '',
+          harga_satuan: hargaSatuan,
+          jumlah_produk: jumlahProduk,
+          total_harga: totalHarga,
+          status: item.status || '',
+          metode_bayar: item.method || '',
+          jam: formatUtc7(item.created_at)
+        })
+      })
+
+      data.push({
+        type: 'subtotal',
+        pemesan: `Total ${group.pemesan}`,
+        produk: '',
+        catatan: '',
+        harga_satuan: '',
+        jumlah_produk: groupTotalQty,
+        total_harga: groupTotalPrice,
+        status: '',
+        metode_bayar: '',
+        jam: ''
+      })
+
+      grandTotal += groupTotalPrice
+      grandTotalQty += groupTotalQty
+    })
+
+    if (data.length) {
+      data.push({
+        type: 'grand_total',
+        pemesan: 'TOTAL PENJUALAN',
+        produk: '',
+        catatan: '',
+        harga_satuan: '',
+        jumlah_produk: grandTotalQty,
+        total_harga: grandTotal,
+        status: '',
+        metode_bayar: '',
+        jam: ''
+      })
+    }
+
+    return data
+  }
+
+  const handleExportCsv = async () => {
+    const data = getExportData()
+    if (!data.length) {
+      Swal.fire('Info', 'Tidak ada data untuk diekspor', 'info')
+      return
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet('Online Orders')
+
+      const headerRow = ['PEMESAN', 'PRODUK', 'CATATAN', 'HARGA SATUAN', 'JUMLAH PRODUK', 'TOTAL HARGA', 'STATUS', 'METODE BAYAR', 'JAM']
+      worksheet.addRow(headerRow)
+
+      const headerFormatting = {
+        font: { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 },
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF808080' } },
+        alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+        border: { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+      }
+
+      worksheet.getRow(1).eachCell((cell) => {
+        cell.font = headerFormatting.font
+        cell.fill = headerFormatting.fill
+        cell.alignment = headerFormatting.alignment
+        cell.border = headerFormatting.border
+      })
+
+      data.forEach((row) => {
+        const excelRow = worksheet.addRow([
+          row.pemesan,
+          row.produk,
+          row.catatan,
+          row.harga_satuan,
+          row.jumlah_produk,
+          row.total_harga,
+          row.status,
+          row.metode_bayar,
+          row.jam
+        ])
+
+        excelRow.eachCell((cell, colNumber) => {
+          cell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true }
+          cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } }
+
+          if (row.type === 'subtotal' || row.type === 'grand_total') {
+            cell.font = { bold: true, color: { argb: 'FF000000' } }
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD3D3D3' } }
+          }
+
+            if ([4, 5, 6].includes(colNumber)) {
+              cell.numFmt = '#,##0'
+            }
+          })
+        })
+
+        worksheet.columns = [
+          { width: 20 },
+          { width: 35 },
+          { width: 18 },
+          { width: 18 },
+          { width: 18 },
+          { width: 12 },
+          { width: 15 },
+          { width: 18 },
+          { width: 18 }
+        ]
+
+      worksheet.getRow(1).height = 25
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+
+      const announcementName = currentAnnouncement?.title || currentAnnouncement?.name || 'Announcement'
+      const filename = isAllWeek
+        ? `online-orders-all-weeks-${new Date().toISOString().slice(0, 10)}.xlsx`
+        : `Online - W${activeWeek} - ${announcementName} - ${new Date().toISOString().slice(0, 10)}.xlsx`
+
+      link.setAttribute('download', filename)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Export error:', error)
+      Swal.fire('Error', 'Gagal mengekspor data ke Excel', 'error')
+    }
   }
 
   const handleSelectProduk = option => {
@@ -425,6 +617,13 @@ const Week = () => {
             }}
           >
             Tambah order
+          </Button>
+          <Button
+            color="success"
+            onClick={handleExportCsv}
+            disabled={loading || !filtered.length}
+          >
+            Ekspor Data
           </Button>
           <Button color="danger" className="me-3 mb-2 mb-md-0" onClick={() => {
             setSearchText('')
