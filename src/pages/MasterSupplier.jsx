@@ -190,11 +190,13 @@ const MasterSupplier = () => {
     if (!result.isConfirmed) return
     setLoading(true)
     try {
-      const index = data.findIndex(p => p.id === row.id)
-      if (index === -1) throw new Error('Data tidak ditemukan')
-      const updated = [...data]
-      updated[index].isDeleted = true
-      await saveProductData(username, updated)
+      const owner = row._owner
+      const ownerProducts = [...(productData[owner] || [])]
+      if (row._index == null || ownerProducts[row._index] == null) {
+        throw new Error('Data tidak ditemukan')
+      }
+      ownerProducts[row._index].isDeleted = true
+      await saveProductData(owner, ownerProducts)
       Swal.fire('Dihapus!', `Produk "${row.namaProduk}" berhasil dihapus.`, 'success')
     } catch (error) {
       console.error('Error deleting product:', error)
