@@ -454,10 +454,50 @@ const BazaarManagement = () => {
     return <span className={`badge bg-${badge.color}`}>{badge.text}</span>
   }
 
+  const getRegistrationParticipation = (registration) => {
+    const onlineProducts = registration?.selectedProductsOnline || []
+    const offlineProducts = registration?.selectedProductsOffline || []
+    const registrationProducts = registration?.registrationProducts || []
+
+    const hasOnlineSelection = onlineProducts.length > 0 || registration?.participateOnline
+    const hasOfflineSelection = offlineProducts.length > 0 || registration?.participateOffline
+
+    if (!hasOnlineSelection && !hasOfflineSelection && registrationProducts.length > 0) {
+      const channels = registrationProducts.map(p => (p?.channel || '').toLowerCase())
+      return {
+        hasOnline: channels.some(c => c === 'online' || c === 'both'),
+        hasOffline: channels.some(c => c === 'offline' || c === 'both')
+      }
+    }
+
+    return {
+      hasOnline: hasOnlineSelection,
+      hasOffline: hasOfflineSelection
+    }
+  }
+
+  const getRegistrationProductCount = (registration) => {
+    const onlineProducts = registration?.selectedProductsOnline || []
+    const offlineProducts = registration?.selectedProductsOffline || []
+
+    if (onlineProducts.length || offlineProducts.length) {
+      return onlineProducts.length + offlineProducts.length
+    }
+
+    const registrationProducts = registration?.registrationProducts || []
+    if (registrationProducts.length) {
+      const activeProducts = registrationProducts.filter(p => !p?.isDeleted)
+      return activeProducts.length > 0 ? activeProducts.length : registrationProducts.length
+    }
+
+    return registration?.selectedProducts?.length || 0
+  }
+
   const getParticipationBadge = (registration) => {
+    const { hasOnline, hasOffline } = getRegistrationParticipation(registration)
     const badges = []
-    if (registration?.participateOnline) badges.push(<span key="online" className="badge bg-primary me-1">Online</span>)
-    if (registration?.participateOffline) badges.push(<span key="offline" className="badge bg-info me-1">Offline</span>)
+    if (hasOnline) badges.push(<span key="online" className="badge bg-primary me-1">Online</span>)
+    if (hasOffline) badges.push(<span key="offline" className="badge bg-info me-1">Offline</span>)
     return badges
   }
 
@@ -507,18 +547,7 @@ const BazaarManagement = () => {
     },
     {
       name: 'Jumlah Produk',
-      selector: row => {
-        if (row?.registrationProducts && row.registrationProducts.length) {
-          return row.registrationProducts.filter(p => !p.isDeleted).length
-        }
-        if (row?.selectedProductsOnline?.length || row?.selectedProductsOffline?.length) {
-          let count = 0
-          if (row?.selectedProductsOnline) count += row?.selectedProductsOnline.length
-          if (row?.selectedProductsOffline) count += row?.selectedProductsOffline.length
-          return count
-        }
-        return row?.selectedProducts?.length || 0
-      },
+      selector: row => getRegistrationProductCount(row),
       sortable: true,
       width: '150px',
       wrap: true
