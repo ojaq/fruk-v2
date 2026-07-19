@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Button, Col, Input, Label, Row, Modal, ModalHeader, ModalBody, ModalFooter, Card, CardBody, CardHeader, Form, FormGroup, Alert, Badge, Spinner } from 'reactstrap'
 import Swal from 'sweetalert2'
 import DataTable from 'react-data-table-component'
-import { Edit, Trash2, Eye, Check, X, Download } from 'react-feather'
+import { Edit, Trash2, Eye, Check, X, Download, RefreshCcw } from 'react-feather'
 import { useAuth } from '../context/AuthContext'
 import Select from 'react-select'
 import moment from 'moment'
@@ -27,6 +27,13 @@ function formatDateTimeID(dateStr) {
   const jam = d.getHours().toString().padStart(2, '0')
   const menit = d.getMinutes().toString().padStart(2, '0')
   return `${d.getDate().toString().padStart(2, '0')} ${MONTHS_ID[d.getMonth()]} ${d.getFullYear()} ${jam}:${menit}`
+}
+
+function formatPrice(val) {
+  const num = parseFloat(val)
+  if (!num || num <= 0) return '-'
+  const adjustedValue = num < 1000 ? num * 1000 : num
+  return `Rp${adjustedValue.toLocaleString('id-ID', { maximumFractionDigits: 0 })}`
 }
 
 const BazaarManagement = () => {
@@ -106,12 +113,12 @@ const BazaarManagement = () => {
         prev.map(reg =>
           reg.id === editingRegistration.id
             ? {
-                ...reg,
-                status,
-                adminNotes,
-                reviewedBy: user.name,
-                updatedAt: payload.updated_at
-              }
+              ...reg,
+              status,
+              adminNotes,
+              reviewedBy: user.name,
+              updatedAt: payload.updated_at
+            }
             : reg
         )
       )
@@ -237,6 +244,114 @@ const BazaarManagement = () => {
     } catch (err) {
       console.error('Restore failed:', err)
       Swal.fire('Error', 'Gagal memulihkan pendaftaran', 'error')
+    }
+  }
+
+  const updateRegistrationInState = (registrationId, updater) => {
+    setRegistrations(prev => prev.map(reg => reg.id === registrationId ? updater(reg) : reg))
+    setSelectedRegistration(prev => prev && prev.id === registrationId ? updater(prev) : prev)
+  }
+
+  const handleDeleteProduct = async (product) => {
+    if (!selectedRegistration?.id || !product?.id) return
+
+    const result = await Swal.fire({
+      title: 'Hapus produk ini?',
+      text: 'Produk akan dihapus dari pendaftaran bazaar.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Hapus',
+      cancelButtonText: 'Batal'
+    })
+
+    if (!result.isConfirmed) return
+
+    setLoading(true)
+    try {
+      const { error } = await supabase
+        .from('registration_products')
+        .update({ is_deleted: true })
+        .eq('id', product.id)
+
+      if (error) throw error
+
+      updateRegistrationInState(selectedRegistration.id, reg => ({
+        ...reg,
+        registrationProducts: (reg.registrationProducts || []).filter(p => p.id !== product.id)
+      }))
+      setEditableProducts(prev => prev.filter(p => p.id !== product.id))
+
+      Swal.fire('Berhasil', 'Produk berhasil dihapus dari pendaftaran', 'success')
+    } catch (err) {
+      console.error('Error deleting registration product:', err)
+      Swal.fire('Error', 'Gagal menghapus produk', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRefreshProduct = async (product) => {
+    if (!product?.productId) {
+      Swal.fire('Info', 'Produk tidak memiliki productId, tidak bisa refresh.', 'info')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const { data: latestProduct, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', product.productId)
+        .eq('is_deleted', false)
+        .single()
+
+      if (error || !latestProduct) {
+        throw new Error('Produk terbaru tidak ditemukan')
+      }
+
+      const updatedFields = {
+        nama_produk: latestProduct.nama_produk,
+        jenis_produk: latestProduct.jenis_produk,
+        keterangan: latestProduct.keterangan,
+        satuan: latestProduct.satuan,
+        ukuran: latestProduct.ukuran,
+        hjk: latestProduct.hjk,
+        hpp: latestProduct.hpp,
+        image_url: latestProduct.image_url
+      }
+
+      const { error: updateError } = await supabase
+        .from('registration_products')
+        .update(updatedFields)
+        .eq('id', product.id)
+
+      if (updateError) throw updateError
+
+      const updatedLocalProduct = {
+        ...product,
+        namaProduk: latestProduct.nama_produk,
+        jenisProduk: latestProduct.jenis_produk,
+        keterangan: latestProduct.keterangan,
+        satuan: latestProduct.satuan,
+        ukuran: latestProduct.ukuran,
+        hjk: latestProduct.hjk,
+        hpp: latestProduct.hpp,
+        imageUrl: latestProduct.image_url
+      }
+
+      updateRegistrationInState(selectedRegistration.id, reg => ({
+        ...reg,
+        registrationProducts: (reg.registrationProducts || []).map(p => p.id === product.id ? updatedLocalProduct : p)
+      }))
+
+      setEditableProducts(prev => prev.map(p => p.id === product.id ? updatedLocalProduct : p))
+
+      Swal.fire('Berhasil', 'Data produk telah sesuai dengan informasi terbaru', 'success')
+    } catch (err) {
+      console.error('Error refreshing registration product:', err)
+      Swal.fire('Error', err.message || 'Gagal menyegarkan produk', 'error')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -999,7 +1114,27 @@ const BazaarManagement = () => {
                                 {online.length > 0 && <>
                                   <li><strong>Online:</strong></li>
                                   {online.map((product, index) => (
-                                    <li key={"on-" + (product.id || index)} style={{ marginLeft: 16 }}>{product.namaProduk || product.nama_produk || product.label}</li>
+                                    <li key={"on-" + (product.id || index)} style={{ marginLeft: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <span style={{ flex: 1 }}>{product.namaProduk || product.nama_produk || product.label} — {formatPrice(product.hjk)}</span>
+                                      <Button
+                                        size="sm"
+                                        color="secondary"
+                                        outline
+                                        onClick={() => handleRefreshProduct(product)}
+                                        disabled={loading}
+                                      >
+                                        <RefreshCcw size={14} />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        color="danger"
+                                        outline
+                                        onClick={() => handleDeleteProduct(product)}
+                                        disabled={loading}
+                                      >
+                                        <Trash2 size={14} />
+                                      </Button>
+                                    </li>
                                   ))}
                                 </>}
                                 {offline.length > 0 && <>
@@ -1007,26 +1142,46 @@ const BazaarManagement = () => {
                                   {offline.map((product) => {
                                     const editable = editableProducts.find(p => p.id === product.id)
                                     return (
-                                      <li key={"off-" + product.id} style={{ marginLeft: 16 }}>
-                                        {product.namaProduk || product.nama_produk || product.label}
-                                        {product.offline_stock != null && (
-                                          <>
-                                            {' — Stok: '}
-                                            <Input
-                                              type="number"
-                                              value={editable?.offline_stock ?? 0}
-                                              style={{ width: 80, display: 'inline-block', marginLeft: 8 }}
-                                              onChange={(e) => {
-                                                const updated = editableProducts.map(p =>
-                                                  p.id === product.id
-                                                    ? { ...p, offline_stock: Number(e.target.value) }
-                                                    : p
-                                                )
-                                                setEditableProducts(updated)
-                                              }}
-                                            />
-                                          </>
-                                        )}
+                                      <li key={"off-" + product.id} style={{ marginLeft: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <div style={{ flex: 1 }}>
+                                          {product.namaProduk || product.nama_produk || product.label} - {formatPrice(product.hjk)}
+                                          {product.offline_stock != null && (
+                                            <>
+                                              {' — Stok: '}
+                                              <Input
+                                                type="number"
+                                                value={editable?.offline_stock ?? 0}
+                                                style={{ width: 80, display: 'inline-block', marginLeft: 8 }}
+                                                onChange={(e) => {
+                                                  const updated = editableProducts.map(p =>
+                                                    p.id === product.id
+                                                      ? { ...p, offline_stock: Number(e.target.value) }
+                                                      : p
+                                                  )
+                                                  setEditableProducts(updated)
+                                                }}
+                                              />
+                                            </>
+                                          )}
+                                        </div>
+                                        <Button
+                                          size="sm"
+                                          color="secondary"
+                                          outline
+                                          onClick={() => handleRefreshProduct(product)}
+                                          disabled={loading}
+                                        >
+                                          <RefreshCcw size={14} />
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          color="danger"
+                                          outline
+                                          onClick={() => handleDeleteProduct(product)}
+                                          disabled={loading}
+                                        >
+                                          <Trash2 size={14} />
+                                        </Button>
                                       </li>
                                     )
                                   })}
@@ -1034,31 +1189,51 @@ const BazaarManagement = () => {
                                 {both.length > 0 && <>
                                   <li><strong>Online & Offline:</strong></li>
                                   {both.map((product) => {
-                                  const editable = editableProducts.find(p => p.id === product.id)
-                                  return (
-                                    <li key={"both-" + product.id} style={{ marginLeft: 16 }}>
-                                      {product.namaProduk || product.nama_produk || product.label}
-                                      {product.offline_stock != null && (
-                                        <>
-                                          {' — Stok Offline: '}
-                                          <Input
-                                            type="number"
-                                            value={editable?.offline_stock ?? 0}
-                                            style={{ width: 80, display: 'inline-block', marginLeft: 8 }}
-                                            onChange={(e) => {
-                                              const updated = editableProducts.map(p =>
-                                                p.id === product.id
-                                                  ? { ...p, offline_stock: Number(e.target.value) }
-                                                  : p
-                                              )
-                                              setEditableProducts(updated)
-                                            }}
-                                          />
-                                        </>
-                                      )}
-                                    </li>
-                                  )
-                                })}
+                                    const editable = editableProducts.find(p => p.id === product.id)
+                                    return (
+                                      <li key={"both-" + product.id} style={{ marginLeft: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <div style={{ flex: 1 }}>
+                                          {product.namaProduk || product.nama_produk || product.label} — {formatPrice(product.hjk)}
+                                          {product.offline_stock != null && (
+                                            <>
+                                              {' — Stok Offline: '}
+                                              <Input
+                                                type="number"
+                                                value={editable?.offline_stock ?? 0}
+                                                style={{ width: 80, display: 'inline-block', marginLeft: 8 }}
+                                                onChange={(e) => {
+                                                  const updated = editableProducts.map(p =>
+                                                    p.id === product.id
+                                                      ? { ...p, offline_stock: Number(e.target.value) }
+                                                      : p
+                                                  )
+                                                  setEditableProducts(updated)
+                                                }}
+                                              />
+                                            </>
+                                          )}
+                                        </div>
+                                        <Button
+                                          size="sm"
+                                          color="secondary"
+                                          outline
+                                          onClick={() => handleRefreshProduct(product)}
+                                          disabled={loading}
+                                        >
+                                          <RefreshCcw size={14} />
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          color="danger"
+                                          outline
+                                          onClick={() => handleDeleteProduct(product)}
+                                          disabled={loading}
+                                        >
+                                          <Trash2 size={14} />
+                                        </Button>
+                                      </li>
+                                    )
+                                  })}
                                 </>}
                               </>
                             )
