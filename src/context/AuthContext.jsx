@@ -228,27 +228,29 @@ export const AuthProvider = ({ children }) => {
         updatedAt: r.updated_at,
         isDeleted: r.is_deleted || false,
 
-        registrationProducts: (r.registration_products || []).map(p => ({
-          id: p.id,
-          registrationId: p.registration_id,
-          channel: p.channel,
+        registrationProducts: (r.registration_products || [])
+          .filter(p => !p.is_deleted)
+          .map(p => ({
+            id: p.id,
+            registrationId: p.registration_id,
+            channel: p.channel,
 
-          namaProduk: p.nama_produk,
-          jenisProduk: p.jenis_produk,
-          keterangan: p.keterangan,
-          satuan: p.satuan,
-          ukuran: p.ukuran,
-          hjk: p.hjk,
-          hpp: p.hpp,
-          imageUrl: p.image_url,
-          offline_stock: p.offline_stock,
+            namaProduk: p.nama_produk,
+            jenisProduk: p.jenis_produk,
+            keterangan: p.keterangan,
+            satuan: p.satuan,
+            ukuran: p.ukuran,
+            hjk: p.hjk,
+            hpp: p.hpp,
+            imageUrl: p.image_url,
+            offline_stock: p.offline_stock,
 
-          productId: p.product_id,
+            productId: p.product_id,
 
-          isActive: p.is_active,
-          isDeleted: p.is_deleted,
-          createdAt: p.created_at
-        }))
+            isActive: p.is_active,
+            isDeleted: p.is_deleted,
+            createdAt: p.created_at
+          }))
       }
     })
 
