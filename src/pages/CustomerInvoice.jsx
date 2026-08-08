@@ -31,6 +31,12 @@ const CustomerInvoice = () => {
     return text.replace(regex, '<mark>$1</mark>')
   }
 
+  const normalizePemesan = value =>
+    String(value || '')
+      .normalize('NFKC')
+      .trim()
+      .replace(/\s+/g, ' ')
+
   useEffect(() => {
     const relevant = (orders || []).filter(o => {
       const isOpenBill = !o.status || o.status === 'open_bill'
@@ -46,17 +52,18 @@ const CustomerInvoice = () => {
 
     const map = {}
     relevant.forEach(o => {
+      const pemesanLabel = normalizePemesan(o.pemesan)
       const prod = o.registration_products || {}
       const label = `${prod.nama_produk || ''} ${prod.ukuran || ''} ${prod.satuan || ''}`.trim()
       const isOpenBill = !o.status || o.status === 'open_bill'
       const sourceLabel = o.channel === 'offline' ? 'Offline Open Bill' : isOpenBill ? 'Online Open Bill' : 'Online Lunas'
-      const key = `${o.pemesan}|${sourceLabel}|${label}|${o.catatan || ''}`
+      const key = `${pemesanLabel}|${sourceLabel}|${label}|${o.catatan || ''}`
       const qty = Number(o.jumlah)
       const bayarRaw = Number(o.bayar)
       const bayar = bayarRaw > 0 && bayarRaw < 1000 ? bayarRaw * 1000 : bayarRaw
 
       const row = {
-        pemesan: o.pemesan,
+        pemesan: pemesanLabel,
         sourceLabel,
         produkLabel: label,
         catatan: o.catatan || '',
@@ -94,9 +101,9 @@ const CustomerInvoice = () => {
         return {
           id: i + 1,
           pemesan: first.pemesan,
-          sourceLabel: first.sourceLabel,
           rawChannel: first.rawChannel,
           rawStatus: first.rawStatus,
+          sourceLabel: first.sourceLabel,
           items: list,
           totalQty: list.reduce((a, b) => a + b.jumlah, 0),
           totalHarga: list.reduce((a, b) => a + b.bayar, 0)
@@ -337,6 +344,11 @@ const CustomerInvoice = () => {
     doc.save(`Customer-Invoice-${activeWeek ? `Minggu-${activeWeek}` : 'Semua-Minggu'}.pdf`)
   }
 
+  const pemesanOptions = [...new Set(grouped.map(g => normalizePemesan(g.pemesan)))]
+    .filter(Boolean)
+    .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
+    .map(value => ({ label: value, value }))
+
   const filteredGrouped = grouped.filter(group => {
     const matchPemesan = selectedPemesan ? group.pemesan === selectedPemesan.value : true
     const matchSearch = searchText ? group.items.some(item => Object.values(item).some(val => String(val).toLowerCase().includes(searchText.toLowerCase()))) : true
@@ -352,24 +364,41 @@ const CustomerInvoice = () => {
 
   return (
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
-      <Row className="mb-3">
+      <Row className="mb-3 align-items-center">
         <Col xs="12" md="6">
           <h4>Customer Invoice - {activeWeek ? `Minggu ${activeWeek}` : 'Semua Minggu'}</h4>
         </Col>
         <Col xs="12" md="6" className="text-end mt-2 mt-md-0">
+          <Button
+            color="danger"
+            className="me-2"
+            onClick={() => {
+              setSearchText('')
+              setSelectedPemesan(null)
+              setSelectedStatus(null)
+              setSelectedChannel(null)
+            }}
+          >
+            Reset Filter
+          </Button>
+          {grouped.length > 0 && (
+            <Button color="success" onClick={() => generateInvoiceSheet()}>
+              Generate All Invoice
+            </Button>
+          )}
         </Col>
       </Row>
       <Row className="mb-3">
-        <Col xs="12" md="2" className="mb-2 mb-md-0">
+        <Col xs="12" md="3" className="mb-2 mb-md-0">
           <Input
             placeholder="🔍 Cari..."
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
           />
         </Col>
-        <Col xs="12" md="2" className="mb-2 mb-md-0">
+        <Col xs="12" md="3" className="mb-2 mb-md-0">
           <Select
-            options={grouped.map(g => ({ label: g.pemesan, value: g.pemesan }))}
+            options={pemesanOptions}
             placeholder="🔽 Filter pemesan"
             isClearable
             isSearchable
@@ -377,7 +406,7 @@ const CustomerInvoice = () => {
             onChange={setSelectedPemesan}
           />
         </Col>
-        <Col xs="12" md="2" className="mb-2 mb-md-0">
+        <Col xs="12" md="3" className="mb-2 mb-md-0">
           <Select
             options={[
               { label: 'Open Bill', value: 'open_bill' },
@@ -389,7 +418,7 @@ const CustomerInvoice = () => {
             onChange={setSelectedStatus}
           />
         </Col>
-        <Col xs="12" md="2" className="mb-2 mb-md-0">
+        <Col xs="12" md="3" className="mb-2 mb-md-0">
           <Select
             options={[
               { label: 'Online', value: 'online' },
@@ -401,27 +430,6 @@ const CustomerInvoice = () => {
             onChange={setSelectedChannel}
           />
         </Col>
-        <Col xs="6" md="2" className="mb-2 mb-md-0">
-          <Button color="danger" className='w-100' onClick={() => {
-            setSearchText('')
-            setSelectedPemesan(null)
-            setSelectedStatus(null)
-            setSelectedChannel(null)
-          }}>
-            Reset Filter
-          </Button>
-        </Col>
-        <Col xs="6" md="2" className="text-end">
-          {grouped.length > 0 && (
-            <Button
-              color="success"
-              onClick={() => generateInvoiceSheet()}
-              className='w-100'
-            >
-              Generate All Invoice
-            </Button>
-          )}
-        </Col>
       </Row>
       {filteredGrouped.map(group => (
         <Card key={group.id} className="mb-3">
@@ -429,7 +437,7 @@ const CustomerInvoice = () => {
             <Row className="align-items-center">
               <Col>
                 <h5 className="mb-0">
-                  {group.pemesan} - 
+                  {group.pemesan} -
                   <>
                     {[...new Set(group.items.map(i => i.rawChannel))].map(channel => (
                       <Badge

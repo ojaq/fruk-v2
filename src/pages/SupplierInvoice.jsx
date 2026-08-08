@@ -206,7 +206,7 @@ const SupplierInvoice = () => {
       doc.setFontSize(11)
       doc.setFont('helvetica', 'normal')
       doc.text('Catatan:', 15, finalY + 10)
-      doc.text(`Invoice ${formattedChannel.toLowerCase()} untuk ${ weekNum ? `minggu ke-${weekNum}` : 'semua minggu' }`, 15, finalY + 15)
+      doc.text(`Invoice ${formattedChannel.toLowerCase()} untuk ${weekNum ? `minggu ke-${weekNum}` : 'semua minggu'}`, 15, finalY + 15)
 
       const matchedUser = registeredUsers.find(
         u => u.namaSupplier?.trim().toLowerCase() === supplier.trim().toLowerCase()
@@ -217,7 +217,7 @@ const SupplierInvoice = () => {
 
       doc.text(paymentLine, 15, finalY + 25)
 
-      doc.save(`Supplier Invoice - ${supplier} - ${formattedChannel} ${ weekNum ? `Minggu ke-${weekNum}` : 'Semua Minggu' }.pdf`)
+      doc.save(`Supplier Invoice - ${supplier} - ${formattedChannel} ${weekNum ? `Minggu ke-${weekNum}` : 'Semua Minggu'}.pdf`)
     }
   }
 
@@ -347,22 +347,41 @@ const SupplierInvoice = () => {
 
   return (
     <div className="container-fluid mt-4 px-1 px-sm-3 px-md-5">
-      <Row className="mb-3">
+      <Row className="mb-3 align-items-center">
         <Col xs="12" md="6">
           <h4>Supplier Invoice - {activeWeek ? `Minggu ${activeWeek}` : 'Semua Minggu'}</h4>
         </Col>
         <Col xs="12" md="6" className="text-end mt-2 mt-md-0">
+          <Button
+            color="danger"
+            className="me-2"
+            onClick={() => {
+              setSearchText('')
+              setSelectedSupplier(null)
+              setSelectedChannel(null)
+            }}
+          >
+            Reset Filter
+          </Button>
+          {grouped.length > 0 && (
+            <Button
+              color="success"
+              onClick={() => generateInvoiceSheet()}
+            >
+              Generate All Invoice
+            </Button>
+          )}
         </Col>
       </Row>
       <Row className="mb-3">
-        <Col xs="12" md="3" className="mb-2 mb-md-0">
+        <Col xs="12" md="4" className="mb-2 mb-md-0">
           <Input
             placeholder="🔍 Cari..."
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
           />
         </Col>
-        <Col xs="12" md="3" className="mb-2 mb-md-0">
+        <Col xs="12" md="4" className="mb-2 mb-md-0">
           <Select
             options={[...new Map(grouped.map(g => [g.supplier, { label: g.supplier, value: g.supplier }])).values()]}
             placeholder="🔽 Filter Supplier"
@@ -372,7 +391,7 @@ const SupplierInvoice = () => {
             onChange={setSelectedSupplier}
           />
         </Col>
-        <Col xs="12" md="3" className="mb-2 mb-md-0">
+        <Col xs="12" md="4" className="mb-2 mb-md-0">
           <Select
             options={[
               { label: 'Online', value: 'online' },
@@ -383,25 +402,6 @@ const SupplierInvoice = () => {
             value={selectedChannel}
             onChange={setSelectedChannel}
           />
-        </Col>
-        <Col xs="6" md="3" className="mb-2 mb-md-0 d-flex gap-3">
-          <Button color="danger" onClick={() => {
-            setSearchText('')
-            setSelectedSupplier(null)
-            setSelectedChannel(null)
-          }}>
-            Reset Filter
-          </Button>
-        {/* </Col>
-        <Col xs="6" md="2" className="text-end"> */}
-          {grouped.length > 0 && (
-            <Button
-              color="success"
-              onClick={() => generateInvoiceSheet()}
-            >
-              Generate All Invoice
-            </Button>
-          )}
         </Col>
       </Row>
       {filteredGrouped.map(group => (
