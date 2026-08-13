@@ -477,7 +477,7 @@ const MasterSupplier = () => {
                       alt="Preview"
                       size="preview"
                       style={{ maxWidth: 180, maxHeight: 180, borderRadius: 8, border: '1px solid #eee' }}
-                      lazy={false}
+                      autoLoad={true}
                     />
                     <div className="text-muted small mt-1">Gambar saat ini</div>
                   </div>
@@ -504,7 +504,7 @@ const MasterSupplier = () => {
               alt="Preview"
               size="full"
               style={{ maxWidth: '100%', maxHeight: '80vh', margin: 'auto', display: 'block' }}
-              lazy={false}
+              autoLoad={true}
             />
           )}
         </ModalBody>

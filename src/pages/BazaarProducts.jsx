@@ -376,7 +376,7 @@ const BazaarProducts = () => {
               alt="Preview"
               size="full"
               style={{ maxWidth: '100%', maxHeight: '80vh', margin: 'auto', display: 'block' }}
-              lazy={false}
+              autoLoad={true}
             />
           )}
         </ModalBody>
