@@ -126,6 +126,19 @@ const BazaarRegistration = () => {
   }, [productData, user])
 
   const now = new Date()
+  const isAdminUser = user?.role === 'admin' || user?.role === 'dev'
+
+  const canRegisterForAnnouncement = (announcement) => {
+    if (!announcement?.createdAt || isAdminUser) return true
+
+    const createdAt = new Date(announcement.createdAt)
+    if (isNaN(createdAt)) return true
+
+    const createdDay = new Date(createdAt.getFullYear(), createdAt.getMonth(), createdAt.getDate())
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    return todayStart.getTime() - createdDay.getTime() >= 24 * 60 * 60 * 1000
+  }
+
   const activeAnnouncements = announcements.filter(a => {
     if (a.status !== 'active') return false
     if (!a.registrationDeadline) return true
@@ -134,7 +147,10 @@ const BazaarRegistration = () => {
   })
   const userRegistrations = registrations.filter(r => r?.supplierName === supplierKey || r?.supplierName === user?.name || r?.supplierName === user.nama_supplier)
 
-  const availableAnnouncements = activeAnnouncements.filter(a => !userRegistrations.some(r => r.announcementId === a.id && r.status !== 'rejected'))
+  const availableAnnouncements = activeAnnouncements.filter(a => {
+    if (userRegistrations.some(r => r.announcementId === a.id && r.status !== 'rejected')) return false
+    return canRegisterForAnnouncement(a)
+  })
 
   const lastRegistration = userRegistrations.length > 0
     ? userRegistrations.reduce((a, b) => new Date(a.createdAt) > new Date(b.createdAt) ? a : b)
@@ -246,6 +262,15 @@ const BazaarRegistration = () => {
         Swal.fire(
           'Error',
           'Pengumuman tidak ditemukan!',
+          'error'
+        )
+        return
+      }
+
+      if (!canRegisterForAnnouncement(announcement)) {
+        Swal.fire(
+          'Error',
+          'Pendaftaran untuk pengumuman ini belum dibuka untuk user reguler. Hanya admin yang dapat mendaftar di hari pengumuman dibuat.',
           'error'
         )
         return
@@ -889,11 +914,13 @@ const BazaarRegistration = () => {
       item.notes.toLowerCase().includes(searchText.toLowerCase())
   })
 
-  const announcementOptions = activeAnnouncements.map(a => ({
-    label: `${a.title} (${formatDateRangeID(a.onlineDateStart, a.onlineDateEnd)} - ${formatDateID(a.offlineDate)})`,
-    value: a.id,
-    data: a
-  }))
+  const announcementOptions = activeAnnouncements
+    .filter(a => canRegisterForAnnouncement(a))
+    .map(a => ({
+      label: `${a.title} (${formatDateRangeID(a.onlineDateStart, a.onlineDateEnd)} - ${formatDateID(a.offlineDate)})`,
+      value: a.id,
+      data: a
+    }))
 
   const currentAnnouncement = selectedAnnouncement || announcements.find(a => a.id === form.announcementId)
   const maxSuppliersOnline = currentAnnouncement?.maxSuppliersOnline ?? 70
@@ -1015,8 +1042,8 @@ const BazaarRegistration = () => {
             <Row>
               {(onlineFull || offlineFull) && (
                 <Alert color="danger" className="mb-3">
-                  {onlineFull && <div>❌ Kuota supplier <b>Online</b> sudah penuh ({maxSuppliersOnline}).</div>}
-                  {offlineFull && <div>❌ Kuota supplier <b>Offline</b> sudah penuh ({maxSuppliersOffline}).</div>}
+                  {onlineFull && <div>❌ Kuota supplier <b>Online</b> sudah penuh.</div>}
+                  {offlineFull && <div>❌ Kuota supplier <b>Offline</b> sudah penuh.</div>}
                 </Alert>
               )}
               <Col xs="12" md="6" className="mb-3">
