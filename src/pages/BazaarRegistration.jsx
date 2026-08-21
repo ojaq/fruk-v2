@@ -56,6 +56,9 @@ function getProductName(product) {
 function getProductType(product) {
   return product?.jenis_produk || product?.jenisProduk || null
 }
+function getOfflineStockMax(product) {
+  return getProductType(product)?.toLowerCase() === 'minuman' ? 50 : undefined
+}
 function getProductImage(product) {
   return product?.image_url || product?.imageUrl || null
 }
@@ -578,6 +581,19 @@ const BazaarRegistration = () => {
               Number.isNaN(p.offline_stock)
             )
         )
+
+      const hasExcessMinumanStock = registrationProducts.some(
+        p => getOfflineStockMax(p) !== undefined && p.offline_stock > getOfflineStockMax(p)
+      )
+
+      if (hasExcessMinumanStock) {
+        Swal.fire(
+          'Error',
+          'Stok offline produk Minuman maksimal 50.',
+          'error'
+        )
+        return
+      }
 
       if (hasEmptyOfflineStock) {
         Swal.fire(
@@ -1190,6 +1206,7 @@ const BazaarRegistration = () => {
                               <Input
                                 type="number"
                                 min="0"
+                                max={getOfflineStockMax(product.data)}
                                 placeholder="Stok"
                                 value={offlineStocks[`id-${product.data?.id}`] ?? offlineStocks[`offline-${product.label}`] ?? ''}
                                 onChange={e => {
@@ -1277,6 +1294,7 @@ const BazaarRegistration = () => {
                               <Input
                                 type="number"
                                 min="0"
+                                max={getOfflineStockMax(product.data)}
                                 placeholder="Stok"
                                 value={offlineStocks[`id-${product.data?.id}`] ?? offlineStocks[`offline-${product.label}`] ?? ''}
                                 onChange={e => {
